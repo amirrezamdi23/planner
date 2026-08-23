@@ -11,7 +11,7 @@ export function dayKey(offset = 0): string {
 }
 
 const WEEKDAY_NAMES_FA = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
-const JALALI_MONTHS = [
+export const JALALI_MONTHS = [
   'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
   'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند',
 ];
@@ -74,7 +74,7 @@ export function jalaliMonthLen(_jy: number, jm: number): number {
   return 29;
 }
 
-function jalaliToGregorian(jy: number, jm: number, jd: number): [number, number, number] {
+export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, number, number] {
   let gy = jy <= 979 ? 621 : 1600;
   jy -= jy <= 979 ? 0 : 979;
   let days = 365 * jy + Math.floor(jy / 33) * 8 + Math.floor(((jy % 33) + 3) / 4) + 78 + jd + (jm < 7 ? (jm - 1) * 31 : (jm - 7) * 30 + 186);
@@ -122,6 +122,21 @@ export function daysUntilJalaliDayOfMonth(dueDayJalali: number): number {
   const target = new Date(gy, gm - 1, gd);
   const todayD = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((target.getTime() - todayD.getTime()) / 86400000);
+}
+
+export function todayJalali(): [number, number, number] {
+  const now = new Date();
+  return gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+}
+
+export function jalaliDateOnlyLabel(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const [jy, jm, jd] = gregorianToJalali(y, m, d);
+  return `${jd} ${JALALI_MONTHS[jm - 1]} ${jy}`;
+}
+
+export function jalaliOrdinalDay(day: number): string {
+  return day === 1 ? 'اول' : `${day} اُم`;
 }
 
 export function daysUntilDate(dueDateISO: string): number {

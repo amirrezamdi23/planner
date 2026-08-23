@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { dayKey, todayJalaliLabel, todayWeekdayLabel } from './lib/date';
+import { dayKey, todayJalaliLabel, todayWeekdayLabel, jalaliLabelForDayKey } from './lib/date';
 import SyncCard from './SyncCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
+import Collapsible from './Collapsible';
 import {
   listHabits,
   addHabit,
@@ -13,11 +14,13 @@ import {
   addLogItem,
   toggleLogDone,
   deleteLogItem,
-  getDailyReview,
-  setDailyReview,
+  listDailyReviewEntries,
+  addDailyReviewEntry,
+  deleteDailyReviewEntry,
   type Habit,
   type LogItem,
   type LogItemType,
+  type DailyReviewEntry,
 } from './repo';
 
 const TODAY = dayKey(0);
@@ -46,8 +49,8 @@ export default function App() {
   const [logType, setLogType] = useState<LogItemType>('task');
   const [logPriority, setLogPriority] = useState(false);
 
-  const [review, setReview] = useState('');
-  const [reviewSaved, setReviewSaved] = useState(false);
+  const [reviewInput, setReviewInput] = useState('');
+  const [reviewEntries, setReviewEntries] = useState<DailyReviewEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -55,12 +58,12 @@ export default function App() {
       listHabits(),
       checkedHabitIds(TODAY),
       listLogItems(TODAY),
-      getDailyReview(TODAY),
+      listDailyReviewEntries(),
     ]);
     setHabits(h);
     setChecked(c);
     setLogItems(l);
-    setReview(r.text);
+    setReviewEntries(r);
   }, []);
 
   useEffect(() => {
@@ -109,10 +112,15 @@ export default function App() {
     await reload();
   }
 
-  async function onSaveReview() {
-    await setDailyReview(TODAY, review);
-    setReviewSaved(true);
-    setTimeout(() => setReviewSaved(false), 2000);
+  async function onAddReview() {
+    if (!reviewInput.trim()) return;
+    await addDailyReviewEntry(TODAY, reviewInput);
+    setReviewInput('');
+    await reload();
+  }
+  async function onDeleteReview(recId: string) {
+    await deleteDailyReviewEntry(recId);
+    await reload();
   }
 
   if (loading) {
@@ -132,8 +140,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className="card">
-        <h2>عادت‌های امروز</h2>
+      <Collapsible title="عادت‌های امروز" storageKey="habits">
         {habits.length === 0 && <div className="empty">هنوز عادتی اضافه نکردی.</div>}
         {habits.map((h) => {
           const done = checked.has(h.id);
@@ -162,10 +169,9 @@ export default function App() {
           />
           <button onClick={onAddHabit}>افزودن</button>
         </div>
-      </div>
+      </Collapsible>
 
-      <div className="card">
-        <h2>یادداشت سریع امروز</h2>
+      <Collapsible title="یادداشت سریع امروز" storageKey="quicklog">
         {logItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
         {logItems.map((it) => {
           const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
@@ -224,24 +230,40 @@ export default function App() {
           />
           <button onClick={onAddLog}>ثبت</button>
         </div>
-      </div>
+      </Collapsible>
 
-      <div className="card">
-        <h2>مرور روزانه</h2>
+      <Collapsible title="مرور روزانه" storageKey="dailyreview">
         <textarea
           className="review"
           placeholder="امروز چی گذشت؟ (۲-۳ خط کافیه)"
-          value={review}
-          onChange={(e) => {
-            setReview(e.target.value);
-            setReviewSaved(false);
-          }}
+          value={reviewInput}
+          onChange={(e) => setReviewInput(e.target.value)}
         />
         <div className="add-row">
-          <button onClick={onSaveReview}>ثبت</button>
-          {reviewSaved && <span className="saved-hint">✓ ذخیره شد</span>}
+          <button onClick={onAddReview}>ثبت</button>
         </div>
-      </div>
+
+        {reviewEntries.length === 0 ? (
+          <div className="empty">هنوز مروری ثبت نشده.</div>
+        ) : (
+          <div className="proj-history" style={{ marginTop: 10 }}>
+            {reviewEntries.map((e) => (
+              <div className="log-item" key={e.recId}>
+                <span className="log-mark">–</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
+                    {jalaliLabelForDayKey(e.day)}
+                  </div>
+                  <span className="log-text">{e.text}</span>
+                </div>
+                <button className="habit-del" onClick={() => onDeleteReview(e.recId)} title="حذف">
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Collapsible>
 
       <PaymentsCard />
 

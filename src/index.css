@@ -64,7 +64,39 @@ header {
 }
 .card h2 {
   font-size: 15px;
-  margin: 0 0 12px;
+  margin: 0;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.card-body {
+  margin-top: 12px;
+}
+.chevron-btn {
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 6px;
+  flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+.chevron-btn.collapsed {
+  transform: rotate(-90deg);
+}
+.card h2 .tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 2px 8px;
+  margin-inline-start: 6px;
 }
 
 .habit-row {
@@ -178,6 +210,20 @@ header {
   background: var(--gold);
   border-color: var(--gold);
   color: #fff;
+}
+
+.jdate {
+  display: flex;
+  gap: 6px;
+}
+.jdate select {
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  border-radius: 8px;
+  padding: 8px 6px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
 }
 
 /* Payments */

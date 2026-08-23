@@ -1,15 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
-import { daysUntilJalaliDayOfMonth, daysUntilDate } from './lib/date';
+import { daysUntilJalaliDayOfMonth, daysUntilDate, jalaliOrdinalDay, jalaliDateOnlyLabel, todayJalali } from './lib/date';
 import { listPayments, addPayment, togglePaymentPaid, deletePayment, type Payment, type PaymentKind } from './repo';
-
-const TODAY_INPUT = new Date().toISOString().slice(0, 10);
+import JalaliDateInput from './JalaliDateInput';
+import Collapsible from './Collapsible';
 
 export default function PaymentsCard() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [name, setName] = useState('');
   const [kind, setKind] = useState<PaymentKind>('recurring');
   const [dueDay, setDueDay] = useState('1');
-  const [dueDate, setDueDate] = useState(TODAY_INPUT);
+  const [dueJalali, setDueJalali] = useState<[number, number, number]>(todayJalali());
+  const [dueDate, setDueDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const reload = useCallback(async () => {
     setPayments(await listPayments());
@@ -33,13 +34,12 @@ export default function PaymentsCard() {
   const withDays = payments
     .map((p) => ({
       p,
-      days: p.kind === 'recurring' ? daysUntilJalaliDayOfMonth(p.dueDayJalali ?? 1) : daysUntilDate(p.dueDate ?? TODAY_INPUT),
+      days: p.kind === 'recurring' ? daysUntilJalaliDayOfMonth(p.dueDayJalali ?? 1) : daysUntilDate(p.dueDate ?? dueDate),
     }))
     .sort((a, b) => a.days - b.days);
 
   return (
-    <div className="card">
-      <h2>پرداخت‌ها و اقساط</h2>
+    <Collapsible title="پرداخت‌ها و اقساط" storageKey="payments">
       {withDays.length === 0 && <div className="empty">پرداختی ثبت نشده.</div>}
       {withDays.map(({ p, days }) => {
         const overdue = p.kind === 'once' && days < 0 && !p.paid;
@@ -56,7 +56,12 @@ export default function PaymentsCard() {
           <div className={'pay-row' + (overdue ? ' overdue' : soon ? ' soon' : '')} key={p.recId}>
             <span className="pay-name">
               {p.name}
-              {p.kind === 'recurring' && <span className="pay-sub"> — هرماه روز {p.dueDayJalali} شمسی</span>}
+              {p.kind === 'recurring' && (
+                <span className="pay-sub"> — هر ماه {jalaliOrdinalDay(p.dueDayJalali ?? 1)}</span>
+              )}
+              {p.kind === 'once' && p.dueDate && (
+                <span className="pay-sub"> — {jalaliDateOnlyLabel(p.dueDate)}</span>
+              )}
             </span>
             <span className="pay-days">{label}</span>
             {p.kind === 'once' && (
@@ -108,10 +113,16 @@ export default function PaymentsCard() {
             onChange={(e) => setDueDay(e.target.value)}
           />
         ) : (
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <JalaliDateInput
+            value={dueJalali}
+            onChange={(jalali, dayKey) => {
+              setDueJalali(jalali);
+              setDueDate(dayKey);
+            }}
+          />
         )}
         <button onClick={onAdd}>افزودن</button>
       </div>
-    </div>
+    </Collapsible>
   );
 }

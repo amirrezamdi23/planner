@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { dayKey, jalaliLabelForDayKey } from './lib/date';
+import Collapsible from './Collapsible';
 import {
   listProjects,
   addProject,
@@ -78,9 +79,7 @@ export default function ProjectLogCard() {
   const [last, ...rest] = entries;
 
   return (
-    <div className="card">
-      <h2>لاگ پروژه‌ها</h2>
-
+    <Collapsible title="لاگ پروژه‌ها" storageKey="projectlog">
       {projects.length === 0 && <div className="empty">هنوز پروژه‌ای اضافه نکردی.</div>}
       <div className="type-select">
         {projects.map((p) => (
@@ -157,6 +156,6 @@ export default function ProjectLogCard() {
           </div>
         </>
       )}
-    </div>
+    </Collapsible>
   );
 }

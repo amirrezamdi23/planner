@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getSyncConfig, setSyncConfig, isSyncConfigured, runSync } from './lib/sync';
+import Collapsible from './Collapsible';
 
 const LAST_SYNC_LABEL_KEY = 'sync_last_label';
 
@@ -44,8 +45,7 @@ export default function SyncCard({ onSynced }: { onSynced: () => void }) {
   }, []);
 
   return (
-    <div className="card">
-      <h2>همگام‌سازی بین دستگاه‌ها</h2>
+    <Collapsible title="همگام‌سازی بین دستگاه‌ها" storageKey="sync">
       {editing ? (
         <>
           <div className="add-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
@@ -76,6 +76,6 @@ export default function SyncCard({ onSynced }: { onSynced: () => void }) {
           {status && <span className="saved-hint">{status}</span>}
         </div>
       )}
-    </div>
+    </Collapsible>
   );
 }

@@ -1,5 +1,4 @@
 import db, { makeRecord, type Rec } from './db';
-import { newId } from './lib/id';
 
 // ---------- payload shapes ----------
 export interface HabitPayload {
@@ -134,25 +133,33 @@ export async function deleteLogItem(recId: string): Promise<void> {
 }
 
 // ---------- daily review ----------
-export async function getDailyReview(day: string): Promise<{ recId: string | null; text: string }> {
-  const recs = await liveByType('daily_review');
-  const r = recs.find((r) => (r.payload as DailyReviewPayload).day === day);
-  if (!r) return { recId: null, text: '' };
-  return { recId: r.id, text: (r.payload as DailyReviewPayload).text };
+// Append-only: every submit adds a new dated entry to a running list, rather
+// than overwriting a single per-day note.
+export interface DailyReviewEntry {
+  recId: string;
+  day: string;
+  text: string;
 }
 
-export async function setDailyReview(day: string, text: string): Promise<void> {
+export async function listDailyReviewEntries(): Promise<DailyReviewEntry[]> {
   const recs = await liveByType('daily_review');
-  const existing = recs.find((r) => (r.payload as DailyReviewPayload).day === day);
-  if (existing) {
-    await db.records.put({
-      ...existing,
-      payload: { day, text } as DailyReviewPayload,
-      updatedAt: new Date().toISOString(),
+  return recs
+    .sort((a, b) => b.id.localeCompare(a.id)) // newest first
+    .map((r) => {
+      const p = r.payload as DailyReviewPayload;
+      return { recId: r.id, day: p.day, text: p.text };
     });
-  } else {
-    await db.records.put(makeRecord('daily_review', { day, text } as DailyReviewPayload, newId()));
-  }
+}
+
+export async function addDailyReviewEntry(day: string, text: string): Promise<void> {
+  if (!text.trim()) return;
+  await db.records.put(makeRecord('daily_review', { day, text: text.trim() } as DailyReviewPayload));
+}
+
+export async function deleteDailyReviewEntry(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
 }
 
 // ---------- payments ----------
