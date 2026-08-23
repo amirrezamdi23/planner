@@ -1,4 +1,5 @@
 import db, { makeRecord, type Rec } from './db';
+import { recurringPaymentCycle, jalaliCycleKey } from './lib/date';
 
 // ---------- payload shapes ----------
 export interface HabitPayload {
@@ -20,6 +21,7 @@ export interface LogItemPayload {
 export interface DailyReviewPayload {
   day: string;
   text: string;
+  category: string;
 }
 
 export interface Habit {
@@ -132,6 +134,19 @@ export async function deleteLogItem(recId: string): Promise<void> {
   await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
 }
 
+// Bullet Journal migration: move an item (usually a still-undone task found
+// while reviewing a past day) onto a different day's page.
+export async function moveLogItem(recId: string, newDay: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, day: newDay },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 // ---------- daily review ----------
 // Append-only: every submit adds a new dated entry to a running list, rather
 // than overwriting a single per-day note.
@@ -139,6 +154,7 @@ export interface DailyReviewEntry {
   recId: string;
   day: string;
   text: string;
+  category: string;
 }
 
 export async function listDailyReviewEntries(): Promise<DailyReviewEntry[]> {
@@ -147,13 +163,15 @@ export async function listDailyReviewEntries(): Promise<DailyReviewEntry[]> {
     .sort((a, b) => b.id.localeCompare(a.id)) // newest first
     .map((r) => {
       const p = r.payload as DailyReviewPayload;
-      return { recId: r.id, day: p.day, text: p.text };
+      return { recId: r.id, day: p.day, text: p.text, category: p.category ?? 'personal' };
     });
 }
 
-export async function addDailyReviewEntry(day: string, text: string): Promise<void> {
+export async function addDailyReviewEntry(day: string, text: string, category: string): Promise<void> {
   if (!text.trim()) return;
-  await db.records.put(makeRecord('daily_review', { day, text: text.trim() } as DailyReviewPayload));
+  await db.records.put(
+    makeRecord('daily_review', { day, text: text.trim(), category } as DailyReviewPayload),
+  );
 }
 
 export async function deleteDailyReviewEntry(recId: string): Promise<void> {
@@ -170,6 +188,7 @@ export interface PaymentPayload {
   dueDayJalali?: number; // for 'recurring': day of the Jalali month, 1-31
   dueDate?: string; // for 'once': a day-key
   paid: boolean;
+  paidThroughCycle?: string; // for 'recurring': last "jy-jm" cycle marked paid
 }
 export interface Payment {
   recId: string;
@@ -178,6 +197,7 @@ export interface Payment {
   dueDayJalali?: number;
   dueDate?: string;
   paid: boolean;
+  paidThroughCycle?: string;
 }
 
 export async function listPayments(): Promise<Payment[]> {
@@ -215,6 +235,20 @@ export async function togglePaymentPaid(recId: string): Promise<void> {
   await db.records.put({
     ...r,
     payload: { ...p, paid: !p.paid },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+// Mark the currently-shown cycle of a recurring payment as paid — the row
+// then advances to show the next due date instead of disappearing forever.
+export async function advanceRecurringPayment(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as PaymentPayload;
+  const cycle = recurringPaymentCycle(p.dueDayJalali ?? 1, p.paidThroughCycle);
+  await db.records.put({
+    ...r,
+    payload: { ...p, paidThroughCycle: jalaliCycleKey(cycle) },
     updatedAt: new Date().toISOString(),
   });
 }

@@ -265,6 +265,87 @@ header {
   color: var(--rust);
   white-space: nowrap;
 }
+.pay-check {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+  color: var(--ink-soft);
+  flex: 0 0 auto;
+}
+.pay-check.checked {
+  color: var(--teal);
+}
+.chevron-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+}
+.chevron-btn.small {
+  font-size: 12px;
+  padding: 0;
+}
+
+.mini-btn {
+  border: none;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mini-btn:hover {
+  background: var(--teal);
+}
+
+.day-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.day-nav-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.cat-select {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.cat-btn {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+  font-weight: 700;
+  font-family: inherit;
+}
+.cat-btn.active {
+  outline: 2px solid var(--ink);
+}
+.pill {
+  font-size: 10px;
+  border-radius: 5px;
+  padding: 2px 7px;
+  font-weight: 700;
+}
+.review-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
 
 /* Project log */
 .proj-divider {

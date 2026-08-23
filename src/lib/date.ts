@@ -10,6 +10,16 @@ export function dayKey(offset = 0): string {
   return `${y}-${m}-${day}`;
 }
 
+export function shiftDayKey(key: string, deltaDays: number): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + deltaDays);
+  const ny = date.getFullYear();
+  const nm = String(date.getMonth() + 1).padStart(2, '0');
+  const nd = String(date.getDate()).padStart(2, '0');
+  return `${ny}-${nm}-${nd}`;
+}
+
 const WEEKDAY_NAMES_FA = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
 export const JALALI_MONTHS = [
   'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
@@ -102,11 +112,20 @@ export function jalaliToGregorian(jy: number, jm: number, jd: number): [number, 
   return [gy, gm, gd];
 }
 
-// Days remaining until the Nth day of the current (or next) Jalali month —
-// used for monthly recurring payments like rent or loan installments.
-export function daysUntilJalaliDayOfMonth(dueDayJalali: number): number {
-  const now = new Date();
-  const [jy, jm, jd] = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+export type JalaliCycle = { y: number; m: number };
+
+export function jalaliCycleKey(c: JalaliCycle): string {
+  return `${c.y}-${String(c.m).padStart(2, '0')}`;
+}
+
+function nextJalaliCycle(c: JalaliCycle): JalaliCycle {
+  return c.m === 12 ? { y: c.y + 1, m: 1 } : { y: c.y, m: c.m + 1 };
+}
+
+// The Jalali year-month whose `dueDayJalali` is the next occurrence from
+// today's actual date — ignores any "already paid" bookkeeping.
+function naturalDueCycle(dueDayJalali: number): JalaliCycle {
+  const [jy, jm, jd] = todayJalali();
   let targetM = jm;
   let targetY = jy;
   const clampedDay = Math.min(dueDayJalali, jalaliMonthLen(jy, jm));
@@ -117,11 +136,42 @@ export function daysUntilJalaliDayOfMonth(dueDayJalali: number): number {
       targetY = jy + 1;
     }
   }
-  const clampedTarget = Math.min(dueDayJalali, jalaliMonthLen(targetY, targetM));
-  const [gy, gm, gd] = jalaliToGregorian(targetY, targetM, clampedTarget);
+  return { y: targetY, m: targetM };
+}
+
+// The cycle to actually display: the natural next occurrence, skipped
+// forward past any cycle already marked paid (see `paidThroughCycle`).
+export function recurringPaymentCycle(dueDayJalali: number, paidThroughCycle?: string): JalaliCycle {
+  let cycle = naturalDueCycle(dueDayJalali);
+  let guard = 0;
+  while (paidThroughCycle && jalaliCycleKey(cycle) <= paidThroughCycle && guard < 24) {
+    cycle = nextJalaliCycle(cycle);
+    guard++;
+  }
+  return cycle;
+}
+
+function daysUntilCycle(cycle: JalaliCycle, dueDayJalali: number): number {
+  const clampedTarget = Math.min(dueDayJalali, jalaliMonthLen(cycle.y, cycle.m));
+  const [gy, gm, gd] = jalaliToGregorian(cycle.y, cycle.m, clampedTarget);
   const target = new Date(gy, gm - 1, gd);
+  const now = new Date();
   const todayD = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((target.getTime() - todayD.getTime()) / 86400000);
+}
+
+// Days remaining until a monthly recurring payment's next due date — the
+// current cycle by default, or the first not-yet-paid cycle if some were
+// already marked paid ahead of the calendar catching up.
+export function daysUntilRecurring(dueDayJalali: number, paidThroughCycle?: string): number {
+  return daysUntilCycle(recurringPaymentCycle(dueDayJalali, paidThroughCycle), dueDayJalali);
+}
+
+export function isInCurrentJalaliMonth(key: string): boolean {
+  const [y, m, d] = key.split('-').map(Number);
+  const [jy, jm] = gregorianToJalali(y, m, d);
+  const [cy, cm] = todayJalali();
+  return jy === cy && jm === cm;
 }
 
 export function todayJalali(): [number, number, number] {
