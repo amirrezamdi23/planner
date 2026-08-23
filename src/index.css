@@ -171,6 +171,27 @@ header {
 .log-mark.clickable {
   cursor: pointer;
 }
+.log-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid var(--paper-line);
+  background: var(--paper);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.15s;
+  padding: 0;
+  margin-top: 1px;
+}
+.log-check.done {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+}
 .log-text {
   flex: 1;
   font-size: 14px;

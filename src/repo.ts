@@ -10,18 +10,18 @@ export interface HabitCheckPayload {
   habitId: string;
   day: string;
 }
-export type LogItemType = 'task' | 'event' | 'note';
+export type LogItemType = 'task' | 'event' | 'note' | 'idea';
 export interface LogItemPayload {
   day: string;
   text: string;
   done: boolean;
   itemType: LogItemType;
   priority: boolean;
+  tag?: string;
 }
 export interface DailyReviewPayload {
   day: string;
   text: string;
-  category: string;
 }
 
 export interface Habit {
@@ -36,6 +36,7 @@ export interface LogItem {
   done: boolean;
   itemType: LogItemType;
   priority: boolean;
+  tag?: string;
 }
 
 async function liveByType(type: Rec['type']): Promise<Rec[]> {
@@ -95,7 +96,7 @@ export async function listLogItems(day: string): Promise<LogItem[]> {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((r) => {
       const p = r.payload as LogItemPayload;
-      return { recId: r.id, text: p.text, done: p.done, itemType: p.itemType, priority: p.priority };
+      return { recId: r.id, text: p.text, done: p.done, itemType: p.itemType, priority: p.priority, tag: p.tag };
     });
 }
 
@@ -104,6 +105,7 @@ export async function addLogItem(
   text: string,
   itemType: LogItemType,
   priority: boolean,
+  tag?: string,
 ): Promise<void> {
   if (!text.trim()) return;
   await db.records.put(
@@ -113,6 +115,7 @@ export async function addLogItem(
       done: false,
       itemType,
       priority,
+      tag,
     } as LogItemPayload),
   );
 }
@@ -154,7 +157,6 @@ export interface DailyReviewEntry {
   recId: string;
   day: string;
   text: string;
-  category: string;
 }
 
 export async function listDailyReviewEntries(): Promise<DailyReviewEntry[]> {
@@ -163,15 +165,25 @@ export async function listDailyReviewEntries(): Promise<DailyReviewEntry[]> {
     .sort((a, b) => b.id.localeCompare(a.id)) // newest first
     .map((r) => {
       const p = r.payload as DailyReviewPayload;
-      return { recId: r.id, day: p.day, text: p.text, category: p.category ?? 'personal' };
+      return { recId: r.id, day: p.day, text: p.text };
     });
 }
 
-export async function addDailyReviewEntry(day: string, text: string, category: string): Promise<void> {
+export async function addDailyReviewEntry(day: string, text: string): Promise<void> {
   if (!text.trim()) return;
-  await db.records.put(
-    makeRecord('daily_review', { day, text: text.trim(), category } as DailyReviewPayload),
-  );
+  await db.records.put(makeRecord('daily_review', { day, text: text.trim() } as DailyReviewPayload));
+}
+
+export async function editDailyReviewEntry(recId: string, text: string): Promise<void> {
+  if (!text.trim()) return;
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as DailyReviewPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, text: text.trim() },
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 export async function deleteDailyReviewEntry(recId: string): Promise<void> {

@@ -1,16 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { dayKey, shiftDayKey, todayJalaliLabel, todayWeekdayLabel, jalaliLabelForDayKey } from './lib/date';
+import { dayKey, shiftDayKey, todayJalaliLabel, todayWeekdayLabel, jalaliLabelForDayKey, daysBetweenDayKeys } from './lib/date';
 import { CATEGORIES, categoryInfo } from './categories';
 import SyncCard from './SyncCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import Collapsible from './Collapsible';
 import {
-  listHabits,
-  addHabit,
-  deleteHabit,
-  checkedHabitIds,
-  toggleHabitCheck,
   listLogItems,
   addLogItem,
   toggleLogDone,
@@ -18,20 +13,15 @@ import {
   moveLogItem,
   listDailyReviewEntries,
   addDailyReviewEntry,
+  editDailyReviewEntry,
   deleteDailyReviewEntry,
-  type Habit,
   type LogItem,
   type LogItemType,
   type DailyReviewEntry,
 } from './repo';
 
 const TODAY = dayKey(0);
-
-const DEFAULT_HABITS: Array<[string, string]> = [
-  ['🌙', 'ساعت خواب ثابت'],
-  ['💪', 'ورزش / باشگاه'],
-  ['📓', 'ژورنال (۲ خط)'],
-];
+const REVIEW_EDIT_WINDOW_DAYS = 7;
 
 // Symbol + spelled-out label together, always — so the user never has to
 // memorize what "•" vs "○" vs "–" means on their own. Tasks use a tickable
@@ -41,71 +31,41 @@ const LOG_TYPES: Array<{ id: LogItemType; mark: string; doneMark?: string; label
   { id: 'task', mark: '☐', doneMark: '☑', label: 'کار' },
   { id: 'event', mark: '○', label: 'رویداد' },
   { id: 'note', mark: '–', label: 'یادداشت' },
+  { id: 'idea', mark: '💡', label: 'ایده' },
 ];
 
 export default function App() {
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [habitInput, setHabitInput] = useState('');
-
   const [viewedDay, setViewedDay] = useState(TODAY);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
   const [logInput, setLogInput] = useState('');
   const [logType, setLogType] = useState<LogItemType>('task');
   const [logPriority, setLogPriority] = useState(false);
+  const [logTag, setLogTag] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   const [reviewInput, setReviewInput] = useState('');
-  const [reviewCategory, setReviewCategory] = useState('personal');
   const [reviewEntries, setReviewEntries] = useState<DailyReviewEntry[]>([]);
   const [reviewListOpen, setReviewListOpen] = useState(true);
+  const [reviewEditingId, setReviewEditingId] = useState<string | null>(null);
+  const [reviewEditText, setReviewEditText] = useState('');
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
-    const [h, c, l, r] = await Promise.all([
-      listHabits(),
-      checkedHabitIds(TODAY),
-      listLogItems(viewedDay),
-      listDailyReviewEntries(),
-    ]);
-    setHabits(h);
-    setChecked(c);
+    const [l, r] = await Promise.all([listLogItems(viewedDay), listDailyReviewEntries()]);
     setLogItems(l);
     setReviewEntries(r);
   }, [viewedDay]);
 
   useEffect(() => {
     (async () => {
-      // Guard with a localStorage flag (not just "habits.length === 0") so
-      // React StrictMode's double-invoke in dev can't race and seed twice.
-      if (!localStorage.getItem('seeded_default_habits')) {
-        localStorage.setItem('seeded_default_habits', '1');
-        for (const [icon, name] of DEFAULT_HABITS) {
-          await addHabit(name, icon);
-        }
-      }
       await reload();
       setLoading(false);
     })();
   }, [reload]);
 
-  async function onToggleHabit(id: string) {
-    await toggleHabitCheck(id, TODAY);
-    await reload();
-  }
-  async function onAddHabit() {
-    if (!habitInput.trim()) return;
-    await addHabit(habitInput);
-    setHabitInput('');
-    await reload();
-  }
-  async function onDeleteHabit(recId: string) {
-    await deleteHabit(recId);
-    await reload();
-  }
-
   async function onAddLog() {
     if (!logInput.trim()) return;
-    await addLogItem(viewedDay, logInput, logType, logPriority);
+    await addLogItem(viewedDay, logInput, logType, logPriority, logTag ?? undefined);
     setLogInput('');
     setLogPriority(false);
     await reload();
@@ -125,12 +85,23 @@ export default function App() {
 
   async function onAddReview() {
     if (!reviewInput.trim()) return;
-    await addDailyReviewEntry(TODAY, reviewInput, reviewCategory);
+    await addDailyReviewEntry(TODAY, reviewInput);
     setReviewInput('');
     await reload();
   }
   async function onDeleteReview(recId: string) {
     await deleteDailyReviewEntry(recId);
+    await reload();
+  }
+  function onStartEditReview(e: DailyReviewEntry) {
+    setReviewEditingId(e.recId);
+    setReviewEditText(e.text);
+  }
+  async function onSaveEditReview() {
+    if (!reviewEditingId) return;
+    await editDailyReviewEntry(reviewEditingId, reviewEditText);
+    setReviewEditingId(null);
+    setReviewEditText('');
     await reload();
   }
 
@@ -142,6 +113,8 @@ export default function App() {
     );
   }
 
+  const visibleLogItems = tagFilter ? logItems.filter((it) => it.tag === tagFilter) : logItems;
+
   return (
     <div className="wrap">
       <header>
@@ -150,37 +123,6 @@ export default function App() {
           {todayWeekdayLabel()} — {todayJalaliLabel()}
         </div>
       </header>
-
-      <Collapsible title="عادت‌های امروز" storageKey="habits">
-        {habits.length === 0 && <div className="empty">هنوز عادتی اضافه نکردی.</div>}
-        {habits.map((h) => {
-          const done = checked.has(h.id);
-          return (
-            <div className="habit-row" key={h.recId}>
-              <button
-                className={'habit-check' + (done ? ' done' : '')}
-                onClick={() => onToggleHabit(h.id)}
-              >
-                {done ? '✓' : ''}
-              </button>
-              <span className="habit-icon">{h.icon}</span>
-              <span className="habit-name">{h.name}</span>
-              <button className="habit-del" onClick={() => onDeleteHabit(h.recId)} title="حذف">
-                ✕
-              </button>
-            </div>
-          );
-        })}
-        <div className="add-row">
-          <input
-            placeholder="عادت جدید…"
-            value={habitInput}
-            onChange={(e) => setHabitInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onAddHabit()}
-          />
-          <button onClick={onAddHabit}>افزودن</button>
-        </div>
-      </Collapsible>
 
       <Collapsible title="یادداشت سریع" storageKey="quicklog">
         <div className="day-nav">
@@ -201,22 +143,52 @@ export default function App() {
           )}
         </div>
 
-        {logItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
-        {logItems.map((it) => {
+        <div className="cat-select">
+          <button
+            className={'cat-btn' + (tagFilter === null ? ' active' : '')}
+            style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+            onClick={() => setTagFilter(null)}
+          >
+            همه
+          </button>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              className={'cat-btn' + (tagFilter === c.id ? ' active' : '')}
+              style={{ background: c.bg, color: c.color }}
+              onClick={() => setTagFilter((f) => (f === c.id ? null : c.id))}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+
+        {visibleLogItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
+        {visibleLogItems.map((it) => {
           const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
           const canToggle = it.itemType === 'task';
+          const tag = it.tag ? categoryInfo(it.tag) : null;
           return (
             <div className="log-item" key={it.recId}>
-              <span
-                className={'log-mark' + (canToggle ? ' clickable' : '')}
-                onClick={() => canToggle && onToggleLog(it.recId)}
-                title={canToggle ? 'برای تیک‌زدن کلیک کن' : undefined}
-              >
-                {it.done ? (t.doneMark ?? '✕') : t.mark}
-              </span>
+              {canToggle ? (
+                <button
+                  className={'log-check' + (it.done ? ' done' : '')}
+                  onClick={() => onToggleLog(it.recId)}
+                  title="برای تیک‌زدن کلیک کن"
+                >
+                  {it.done ? '✓' : ''}
+                </button>
+              ) : (
+                <span className="log-mark">{t.mark}</span>
+              )}
               <span className={'log-text' + (it.done ? ' done' : '')}>
                 {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
                 {it.text}
+                {tag && (
+                  <span className="pill" style={{ background: tag.bg, color: tag.color, marginInlineStart: 6 }}>
+                    {tag.name}
+                  </span>
+                )}
               </span>
               {viewedDay !== TODAY && !it.done && (
                 <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="انتقال به امروز">
@@ -249,6 +221,26 @@ export default function App() {
           </button>
         </div>
 
+        <div className="cat-select">
+          <button
+            className={'cat-btn' + (logTag === null ? ' active' : '')}
+            style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+            onClick={() => setLogTag(null)}
+          >
+            بدون تگ
+          </button>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              className={'cat-btn' + (logTag === c.id ? ' active' : '')}
+              style={{ background: c.bg, color: c.color }}
+              onClick={() => setLogTag((cur) => (cur === c.id ? null : c.id))}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
+
         <div className="add-row">
           <input
             placeholder={
@@ -256,7 +248,9 @@ export default function App() {
                 ? 'چه کاری داری؟'
                 : logType === 'event'
                   ? 'چه رویدادی؟'
-                  : 'چی می‌خوای یادداشت کنی؟'
+                  : logType === 'idea'
+                    ? 'چه ایده‌ای؟'
+                    : 'چی می‌خوای یادداشت کنی؟'
             }
             value={logInput}
             onChange={(e) => setLogInput(e.target.value)}
@@ -273,18 +267,6 @@ export default function App() {
           value={reviewInput}
           onChange={(e) => setReviewInput(e.target.value)}
         />
-        <div className="cat-select">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.id}
-              className={'cat-btn' + (reviewCategory === c.id ? ' active' : '')}
-              style={{ background: c.bg, color: c.color }}
-              onClick={() => setReviewCategory(c.id)}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
         <div className="add-row">
           <button onClick={onAddReview}>ثبت</button>
         </div>
@@ -304,7 +286,8 @@ export default function App() {
           ) : (
             <div className="proj-history">
               {reviewEntries.map((e) => {
-                const cat = categoryInfo(e.category);
+                const editable = Math.abs(daysBetweenDayKeys(e.day, TODAY)) <= REVIEW_EDIT_WINDOW_DAYS;
+                const isEditing = reviewEditingId === e.recId;
                 return (
                   <div className="log-item" key={e.recId}>
                     <span className="log-mark">–</span>
@@ -313,12 +296,31 @@ export default function App() {
                         <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
                           {jalaliLabelForDayKey(e.day)}
                         </span>
-                        <span className="pill" style={{ background: cat.bg, color: cat.color }}>
-                          {cat.name}
-                        </span>
                       </div>
-                      <span className="log-text">{e.text}</span>
+                      {isEditing ? (
+                        <>
+                          <textarea
+                            className="review"
+                            style={{ minHeight: 60 }}
+                            value={reviewEditText}
+                            onChange={(ev) => setReviewEditText(ev.target.value)}
+                          />
+                          <div className="add-row">
+                            <button onClick={onSaveEditReview}>ذخیره</button>
+                            <button className="link-btn" onClick={() => setReviewEditingId(null)}>
+                              انصراف
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <span className="log-text">{e.text}</span>
+                      )}
                     </div>
+                    {!isEditing && editable && (
+                      <button className="habit-del" onClick={() => onStartEditReview(e)} title="ویرایش">
+                        ✎
+                      </button>
+                    )}
                     <button className="habit-del" onClick={() => onDeleteReview(e.recId)} title="حذف">
                       ✕
                     </button>

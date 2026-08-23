@@ -189,6 +189,14 @@ export function jalaliOrdinalDay(day: number): string {
   return day === 1 ? 'اول' : `${day} اُم`;
 }
 
+export function daysBetweenDayKeys(a: string, b: string): number {
+  const [ay, am, ad] = a.split('-').map(Number);
+  const [by, bm, bd] = b.split('-').map(Number);
+  const da = new Date(ay, am - 1, ad);
+  const db2 = new Date(by, bm - 1, bd);
+  return Math.round((db2.getTime() - da.getTime()) / 86400000);
+}
+
 export function daysUntilDate(dueDateISO: string): number {
   const target = new Date(dueDateISO + 'T00:00:00');
   const now = new Date();
