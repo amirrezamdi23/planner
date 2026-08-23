@@ -221,6 +221,17 @@ textarea.review {
   resize: vertical;
 }
 
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 4px 2px;
+}
+
 .saved-hint {
   color: var(--teal);
   font-size: 13px;

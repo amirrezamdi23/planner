@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { dayKey, todayJalaliLabel, todayWeekdayLabel } from './lib/date';
+import SyncCard from './SyncCard';
 import {
   listHabits,
   addHabit,
@@ -240,8 +241,11 @@ export default function App() {
         </div>
       </div>
 
+      <SyncCard onSynced={reload} />
+
       <div className="footnote">
-        اطلاعات فقط روی همین دستگاه ذخیره می‌شه. تاریخ‌ها شمسی نمایش داده می‌شن.
+        اطلاعات همین دستگاه ذخیره می‌شه؛ اگه همگام‌سازی رو تنظیم کنی، بین دستگاه‌هات هم به‌روز می‌مونه.
+        تاریخ‌ها شمسی نمایش داده می‌شن.
       </div>
     </div>
   );
