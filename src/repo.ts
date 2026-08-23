@@ -10,10 +10,13 @@ export interface HabitCheckPayload {
   habitId: string;
   day: string;
 }
+export type LogItemType = 'task' | 'event' | 'note';
 export interface LogItemPayload {
   day: string;
   text: string;
   done: boolean;
+  itemType: LogItemType;
+  priority: boolean;
 }
 export interface DailyReviewPayload {
   day: string;
@@ -30,6 +33,8 @@ export interface LogItem {
   recId: string;
   text: string;
   done: boolean;
+  itemType: LogItemType;
+  priority: boolean;
 }
 
 async function liveByType(type: Rec['type']): Promise<Rec[]> {
@@ -89,14 +94,25 @@ export async function listLogItems(day: string): Promise<LogItem[]> {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((r) => {
       const p = r.payload as LogItemPayload;
-      return { recId: r.id, text: p.text, done: p.done };
+      return { recId: r.id, text: p.text, done: p.done, itemType: p.itemType, priority: p.priority };
     });
 }
 
-export async function addLogItem(day: string, text: string): Promise<void> {
+export async function addLogItem(
+  day: string,
+  text: string,
+  itemType: LogItemType,
+  priority: boolean,
+): Promise<void> {
   if (!text.trim()) return;
   await db.records.put(
-    makeRecord('log_item', { day, text: text.trim(), done: false } as LogItemPayload),
+    makeRecord('log_item', {
+      day,
+      text: text.trim(),
+      done: false,
+      itemType,
+      priority,
+    } as LogItemPayload),
   );
 }
 

@@ -130,8 +130,11 @@ header {
   flex: 0 0 auto;
   text-align: center;
   color: var(--ink-soft);
-  cursor: pointer;
   padding-top: 2px;
+  cursor: default;
+}
+.log-mark.clickable {
+  cursor: pointer;
 }
 .log-text {
   flex: 1;
@@ -140,6 +143,38 @@ header {
 .log-text.done {
   text-decoration: line-through;
   color: var(--ink-soft);
+}
+.prio-badge {
+  color: var(--gold, #b8842a);
+  font-weight: 800;
+  margin-inline-end: 3px;
+}
+
+.type-select {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.type-btn {
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-soft);
+}
+.type-btn.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.type-btn.prio.active {
+  background: #b8842a;
+  border-color: #b8842a;
+  color: #fff;
 }
 
 .add-row {

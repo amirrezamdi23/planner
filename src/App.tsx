@@ -14,6 +14,7 @@ import {
   setDailyReview,
   type Habit,
   type LogItem,
+  type LogItemType,
 } from './repo';
 
 const TODAY = dayKey(0);
@@ -24,6 +25,14 @@ const DEFAULT_HABITS: Array<[string, string]> = [
   ['📓', 'ژورنال (۲ خط)'],
 ];
 
+// Symbol + spelled-out label together, always — so the user never has to
+// memorize what "•" vs "○" vs "–" means on their own.
+const LOG_TYPES: Array<{ id: LogItemType; mark: string; label: string }> = [
+  { id: 'task', mark: '•', label: 'کار' },
+  { id: 'event', mark: '○', label: 'رویداد' },
+  { id: 'note', mark: '–', label: 'یادداشت' },
+];
+
 export default function App() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -31,6 +40,8 @@ export default function App() {
 
   const [logItems, setLogItems] = useState<LogItem[]>([]);
   const [logInput, setLogInput] = useState('');
+  const [logType, setLogType] = useState<LogItemType>('task');
+  const [logPriority, setLogPriority] = useState(false);
 
   const [review, setReview] = useState('');
   const [reviewSaved, setReviewSaved] = useState(false);
@@ -81,8 +92,9 @@ export default function App() {
 
   async function onAddLog() {
     if (!logInput.trim()) return;
-    await addLogItem(TODAY, logInput);
+    await addLogItem(TODAY, logInput, logType, logPriority);
     setLogInput('');
+    setLogPriority(false);
     await reload();
   }
   async function onToggleLog(recId: string) {
@@ -152,20 +164,57 @@ export default function App() {
       <div className="card">
         <h2>یادداشت سریع امروز</h2>
         {logItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
-        {logItems.map((it) => (
-          <div className="log-item" key={it.recId}>
-            <span className="log-mark" onClick={() => onToggleLog(it.recId)}>
-              {it.done ? '✕' : '•'}
-            </span>
-            <span className={'log-text' + (it.done ? ' done' : '')}>{it.text}</span>
-            <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
-              ✕
+        {logItems.map((it) => {
+          const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
+          const canToggle = it.itemType === 'task';
+          return (
+            <div className="log-item" key={it.recId}>
+              <span
+                className={'log-mark' + (canToggle ? ' clickable' : '')}
+                onClick={() => canToggle && onToggleLog(it.recId)}
+                title={canToggle ? 'برای تیک‌زدن کلیک کن' : undefined}
+              >
+                {it.done ? '✕' : t.mark}
+              </span>
+              <span className={'log-text' + (it.done ? ' done' : '')}>
+                {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
+                {it.text}
+              </span>
+              <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
+                ✕
+              </button>
+            </div>
+          );
+        })}
+
+        <div className="type-select">
+          {LOG_TYPES.map((t) => (
+            <button
+              key={t.id}
+              className={'type-btn' + (logType === t.id ? ' active' : '')}
+              onClick={() => setLogType(t.id)}
+            >
+              {t.mark} {t.label}
             </button>
-          </div>
-        ))}
+          ))}
+          <button
+            className={'type-btn prio' + (logPriority ? ' active' : '')}
+            onClick={() => setLogPriority((v) => !v)}
+            title="اگه انتخابش کنی، این مورد با علامت * به‌عنوان اولویت بالا مشخص می‌شه"
+          >
+            * اولویت بالا
+          </button>
+        </div>
+
         <div className="add-row">
           <input
-            placeholder="چی داری اضافه می‌کنی؟"
+            placeholder={
+              logType === 'task'
+                ? 'چه کاری داری؟'
+                : logType === 'event'
+                  ? 'چه رویدادی؟'
+                  : 'چی می‌خوای یادداشت کنی؟'
+            }
             value={logInput}
             onChange={(e) => setLogInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onAddLog()}
