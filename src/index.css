@@ -7,6 +7,9 @@
   --ink-soft: #5b5648;
   --teal: #2f6f5e;
   --teal-soft: #dce7e0;
+  --rust: #a63d2f;
+  --rust-soft: #f1dcd6;
+  --gold: #b8842a;
   --card: #f3f0e4;
   --shadow: 0 1px 0 rgba(36, 35, 32, 0.06);
 }
@@ -145,7 +148,7 @@ header {
   color: var(--ink-soft);
 }
 .prio-badge {
-  color: var(--gold, #b8842a);
+  color: var(--gold);
   font-weight: 800;
   margin-inline-end: 3px;
 }
@@ -172,9 +175,80 @@ header {
   border-color: var(--ink);
 }
 .type-btn.prio.active {
-  background: #b8842a;
-  border-color: #b8842a;
+  background: var(--gold);
+  border-color: var(--gold);
   color: #fff;
+}
+
+/* Payments */
+.pay-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-bottom: 1px dashed var(--paper-line);
+  flex-wrap: wrap;
+}
+.pay-row:last-child {
+  border-bottom: none;
+}
+.pay-row.soon {
+  background: var(--rust-soft);
+  border-radius: 8px;
+}
+.pay-row.overdue {
+  background: var(--rust);
+  color: #fff;
+  border-radius: 8px;
+}
+.pay-row.overdue .pay-days {
+  color: #fff;
+}
+.pay-name {
+  flex: 1;
+  font-size: 14px;
+  min-width: 120px;
+}
+.pay-sub {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.pay-days {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--rust);
+  white-space: nowrap;
+}
+
+/* Project log */
+.proj-divider {
+  border-top: 1px dashed var(--paper-line);
+  margin: 12px 0;
+}
+.last-entry {
+  background: var(--teal-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.last-entry-label {
+  font-size: 11px;
+  color: var(--teal);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.last-entry-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.last-entry-text {
+  flex: 1;
+  font-size: 14px;
+}
+.proj-history {
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 .add-row {

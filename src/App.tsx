@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { dayKey, todayJalaliLabel, todayWeekdayLabel } from './lib/date';
 import SyncCard from './SyncCard';
+import PaymentsCard from './PaymentsCard';
+import ProjectLogCard from './ProjectLogCard';
 import {
   listHabits,
   addHabit,
@@ -240,6 +242,10 @@ export default function App() {
           {reviewSaved && <span className="saved-hint">✓ ذخیره شد</span>}
         </div>
       </div>
+
+      <PaymentsCard />
+
+      <ProjectLogCard />
 
       <SyncCard onSynced={reload} />
 

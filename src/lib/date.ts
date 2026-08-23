@@ -57,3 +57,76 @@ export function todayJalaliLabel(): string {
 export function todayWeekdayLabel(): string {
   return WEEKDAY_NAMES_FA[new Date().getDay()];
 }
+
+export function jalaliLabelForDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const [jy, jm, jd] = gregorianToJalali(y, m, d);
+  const weekday = WEEKDAY_NAMES_FA[date.getDay()];
+  return `${weekday} ${jd} ${JALALI_MONTHS[jm - 1]} ${jy}`;
+}
+
+export function jalaliMonthLen(_jy: number, jm: number): number {
+  if (jm <= 6) return 31;
+  if (jm <= 11) return 30;
+  // Approximation good enough for due-date math (leap-year exactness of
+  // Esfand 29 vs 30 doesn't matter when clamping a "day of month" like 31).
+  return 29;
+}
+
+function jalaliToGregorian(jy: number, jm: number, jd: number): [number, number, number] {
+  let gy = jy <= 979 ? 621 : 1600;
+  jy -= jy <= 979 ? 0 : 979;
+  let days = 365 * jy + Math.floor(jy / 33) * 8 + Math.floor(((jy % 33) + 3) / 4) + 78 + jd + (jm < 7 ? (jm - 1) * 31 : (jm - 7) * 30 + 186);
+  gy += 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor((days - 1) / 36524);
+    days = (days - 1) % 36524;
+    if (days >= 365) days++;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    gy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  let gd = days + 1;
+  const isLeapG = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  const monthLens = [0, 31, isLeapG ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let gm = 1;
+  for (; gm < 13; gm++) {
+    if (gd <= monthLens[gm]) break;
+    gd -= monthLens[gm];
+  }
+  return [gy, gm, gd];
+}
+
+// Days remaining until the Nth day of the current (or next) Jalali month —
+// used for monthly recurring payments like rent or loan installments.
+export function daysUntilJalaliDayOfMonth(dueDayJalali: number): number {
+  const now = new Date();
+  const [jy, jm, jd] = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  let targetM = jm;
+  let targetY = jy;
+  const clampedDay = Math.min(dueDayJalali, jalaliMonthLen(jy, jm));
+  if (jd > clampedDay) {
+    targetM = jm + 1;
+    if (targetM > 12) {
+      targetM = 1;
+      targetY = jy + 1;
+    }
+  }
+  const clampedTarget = Math.min(dueDayJalali, jalaliMonthLen(targetY, targetM));
+  const [gy, gm, gd] = jalaliToGregorian(targetY, targetM, clampedTarget);
+  const target = new Date(gy, gm - 1, gd);
+  const todayD = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - todayD.getTime()) / 86400000);
+}
+
+export function daysUntilDate(dueDateISO: string): number {
+  const target = new Date(dueDateISO + 'T00:00:00');
+  const now = new Date();
+  const todayD = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - todayD.getTime()) / 86400000);
+}

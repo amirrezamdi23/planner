@@ -154,3 +154,133 @@ export async function setDailyReview(day: string, text: string): Promise<void> {
     await db.records.put(makeRecord('daily_review', { day, text } as DailyReviewPayload, newId()));
   }
 }
+
+// ---------- payments ----------
+export type PaymentKind = 'recurring' | 'once';
+export interface PaymentPayload {
+  name: string;
+  kind: PaymentKind;
+  dueDayJalali?: number; // for 'recurring': day of the Jalali month, 1-31
+  dueDate?: string; // for 'once': a day-key
+  paid: boolean;
+}
+export interface Payment {
+  recId: string;
+  name: string;
+  kind: PaymentKind;
+  dueDayJalali?: number;
+  dueDate?: string;
+  paid: boolean;
+}
+
+export async function listPayments(): Promise<Payment[]> {
+  const recs = await liveByType('payment');
+  return recs
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((r) => {
+      const p = r.payload as PaymentPayload;
+      return { recId: r.id, ...p };
+    });
+}
+
+export async function addPayment(
+  name: string,
+  kind: PaymentKind,
+  dueDayJalali?: number,
+  dueDate?: string,
+): Promise<void> {
+  if (!name.trim()) return;
+  await db.records.put(
+    makeRecord('payment', {
+      name: name.trim(),
+      kind,
+      dueDayJalali,
+      dueDate,
+      paid: false,
+    } as PaymentPayload),
+  );
+}
+
+export async function togglePaymentPaid(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as PaymentPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, paid: !p.paid },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deletePayment(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+}
+
+// ---------- project log ----------
+// A per-project running history — pick a project, see what you did last and
+// everything you've done on it since, across however many days it takes.
+export interface ProjectPayload {
+  name: string;
+}
+export interface Project {
+  recId: string;
+  id: string;
+  name: string;
+}
+export interface ProjectLogPayload {
+  projectId: string;
+  day: string;
+  text: string;
+}
+export interface ProjectLogEntry {
+  recId: string;
+  day: string;
+  text: string;
+  createdAt: string;
+}
+
+export async function listProjects(): Promise<Project[]> {
+  const recs = await liveByType('project');
+  return recs
+    .map((r) => ({ recId: r.id, id: r.id, name: (r.payload as ProjectPayload).name }))
+    .sort((a, b) => a.recId.localeCompare(b.recId));
+}
+
+export async function addProject(name: string): Promise<void> {
+  if (!name.trim()) return;
+  await db.records.put(makeRecord('project', { name: name.trim() } as ProjectPayload));
+}
+
+export async function deleteProject(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+}
+
+export async function listProjectLog(projectId: string): Promise<ProjectLogEntry[]> {
+  const recs = await liveByType('project_log');
+  return recs
+    .filter((r) => (r.payload as ProjectLogPayload).projectId === projectId)
+    .sort((a, b) => b.id.localeCompare(a.id)) // newest first
+    .map((r) => ({
+      recId: r.id,
+      day: (r.payload as ProjectLogPayload).day,
+      text: (r.payload as ProjectLogPayload).text,
+      createdAt: r.updatedAt,
+    }));
+}
+
+export async function addProjectLogEntry(projectId: string, day: string, text: string): Promise<void> {
+  if (!text.trim()) return;
+  await db.records.put(
+    makeRecord('project_log', { projectId, day, text: text.trim() } as ProjectLogPayload),
+  );
+}
+
+export async function deleteProjectLogEntry(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+}

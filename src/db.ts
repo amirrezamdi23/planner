@@ -3,7 +3,14 @@ import { newId, getDeviceId } from './lib/id';
 
 // One table, many "types" of records. This is the shape that stays stable even
 // as features are added later — new types never require a schema migration here.
-export type RecordType = 'habit' | 'habit_check' | 'log_item' | 'daily_review';
+export type RecordType =
+  | 'habit'
+  | 'habit_check'
+  | 'log_item'
+  | 'daily_review'
+  | 'payment'
+  | 'project'
+  | 'project_log';
 
 export interface Rec {
   id: string;
