@@ -1,5 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import { dayKey, shiftDayKey, todayJalaliLabel, todayWeekdayLabel, jalaliLabelForDayKey, daysBetweenDayKeys } from './lib/date';
+import {
+  dayKey,
+  shiftDayKey,
+  todayJalaliLabel,
+  todayWeekdayLabel,
+  jalaliLabelForDayKey,
+  jalaliDateOnlyLabel,
+  daysBetweenDayKeys,
+} from './lib/date';
 import { CATEGORIES, categoryInfo } from './categories';
 import SyncCard from './SyncCard';
 import PaymentsCard from './PaymentsCard';
@@ -37,11 +45,14 @@ const LOG_TYPES: Array<{ id: LogItemType; mark: string; doneMark?: string; label
 export default function App() {
   const [viewedDay, setViewedDay] = useState(TODAY);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
+  const [prevDayLogItems, setPrevDayLogItems] = useState<LogItem[]>([]);
   const [logInput, setLogInput] = useState('');
   const [logType, setLogType] = useState<LogItemType>('task');
   const [logPriority, setLogPriority] = useState(false);
   const [logTag, setLogTag] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [sleepTimeInput, setSleepTimeInput] = useState('');
+  const [wakeTimeInput, setWakeTimeInput] = useState('');
 
   const [reviewInput, setReviewInput] = useState('');
   const [reviewEntries, setReviewEntries] = useState<DailyReviewEntry[]>([]);
@@ -50,11 +61,18 @@ export default function App() {
   const [reviewEditText, setReviewEditText] = useState('');
   const [loading, setLoading] = useState(true);
 
+  const prevDay = shiftDayKey(viewedDay, -1);
+
   const reload = useCallback(async () => {
-    const [l, r] = await Promise.all([listLogItems(viewedDay), listDailyReviewEntries()]);
+    const [l, pl, r] = await Promise.all([
+      listLogItems(viewedDay),
+      listLogItems(prevDay),
+      listDailyReviewEntries(),
+    ]);
     setLogItems(l);
+    setPrevDayLogItems(pl);
     setReviewEntries(r);
-  }, [viewedDay]);
+  }, [viewedDay, prevDay]);
 
   useEffect(() => {
     (async () => {
@@ -80,6 +98,18 @@ export default function App() {
   }
   async function onMigrateToToday(recId: string) {
     await moveLogItem(recId, TODAY);
+    await reload();
+  }
+  async function onLogSleep() {
+    if (!sleepTimeInput) return;
+    await addLogItem(prevDay, sleepTimeInput, 'sleep', false);
+    setSleepTimeInput('');
+    await reload();
+  }
+  async function onLogWake() {
+    if (!wakeTimeInput) return;
+    await addLogItem(viewedDay, wakeTimeInput, 'wake', false);
+    setWakeTimeInput('');
     await reload();
   }
 
@@ -113,7 +143,11 @@ export default function App() {
     );
   }
 
-  const visibleLogItems = tagFilter ? logItems.filter((it) => it.tag === tagFilter) : logItems;
+  const sleepEntry = prevDayLogItems.find((it) => it.itemType === 'sleep');
+  const wakeEntry = logItems.find((it) => it.itemType === 'wake');
+  const dayUnlocked = !!sleepEntry && !!wakeEntry;
+  const taskLogItems = logItems.filter((it) => it.itemType !== 'sleep' && it.itemType !== 'wake');
+  const visibleLogItems = tagFilter ? taskLogItems.filter((it) => it.tag === tagFilter) : taskLogItems;
 
   return (
     <div className="wrap">
@@ -143,121 +177,153 @@ export default function App() {
           )}
         </div>
 
-        <div className="cat-select">
-          <button
-            className={'cat-btn' + (tagFilter === null ? ' active' : '')}
-            style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-            onClick={() => setTagFilter(null)}
-          >
-            همه
-          </button>
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.id}
-              className={'cat-btn' + (tagFilter === c.id ? ' active' : '')}
-              style={{ background: c.bg, color: c.color }}
-              onClick={() => setTagFilter((f) => (f === c.id ? null : c.id))}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
+        {!dayUnlocked ? (
+          <div className="sleep-gate">
+            {!sleepEntry ? (
+              <>
+                <div className="empty">
+                  برای دیدن لیست {jalaliLabelForDayKey(viewedDay)}، اول باید ساعت خوابِ دیشب (شب {jalaliDateOnlyLabel(prevDay)}) رو ثبت کنی.
+                </div>
+                <div className="add-row">
+                  <input type="time" value={sleepTimeInput} onChange={(e) => setSleepTimeInput(e.target.value)} />
+                  <button onClick={onLogSleep}>ثبت ساعت خواب</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="empty">
+                  حالا ساعت بیداری {jalaliLabelForDayKey(viewedDay)} رو ثبت کن تا لیست این روز رو ببینی.
+                </div>
+                <div className="add-row">
+                  <input type="time" value={wakeTimeInput} onChange={(e) => setWakeTimeInput(e.target.value)} />
+                  <button onClick={onLogWake}>ثبت ساعت بیداری</button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="sleep-summary">
+              🌙 {sleepEntry!.text} — ☀️ {wakeEntry!.text}
+            </div>
 
-        {visibleLogItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
-        {visibleLogItems.map((it) => {
-          const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
-          const canToggle = it.itemType === 'task';
-          const tag = it.tag ? categoryInfo(it.tag) : null;
-          return (
-            <div className="log-item" key={it.recId}>
-              {canToggle ? (
+            <div className="cat-select">
+              <button
+                className={'cat-btn' + (tagFilter === null ? ' active' : '')}
+                style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                onClick={() => setTagFilter(null)}
+              >
+                همه
+              </button>
+              {CATEGORIES.map((c) => (
                 <button
-                  className={'log-check' + (it.done ? ' done' : '')}
-                  onClick={() => onToggleLog(it.recId)}
-                  title="برای تیک‌زدن کلیک کن"
+                  key={c.id}
+                  className={'cat-btn' + (tagFilter === c.id ? ' active' : '')}
+                  style={{ background: c.bg, color: c.color }}
+                  onClick={() => setTagFilter((f) => (f === c.id ? null : c.id))}
                 >
-                  {it.done ? '✓' : ''}
+                  {c.name}
                 </button>
-              ) : (
-                <span className="log-mark">{t.mark}</span>
-              )}
-              <span className={'log-text' + (it.done ? ' done' : '')}>
-                {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
-                {it.text}
-                {tag && (
-                  <span className="pill" style={{ background: tag.bg, color: tag.color, marginInlineStart: 6 }}>
-                    {tag.name}
+              ))}
+            </div>
+
+            {visibleLogItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
+            {visibleLogItems.map((it) => {
+              const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
+              const canToggle = it.itemType === 'task';
+              const tag = it.tag ? categoryInfo(it.tag) : null;
+              return (
+                <div className="log-item" key={it.recId}>
+                  {canToggle ? (
+                    <button
+                      className={'log-check' + (it.done ? ' done' : '')}
+                      onClick={() => onToggleLog(it.recId)}
+                      title="برای تیک‌زدن کلیک کن"
+                    >
+                      {it.done ? '✓' : ''}
+                    </button>
+                  ) : (
+                    <span className="log-mark">{t.mark}</span>
+                  )}
+                  <span className={'log-text' + (it.done ? ' done' : '')}>
+                    {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
+                    {it.text}
+                    {tag && (
+                      <span className="pill" style={{ background: tag.bg, color: tag.color, marginInlineStart: 6 }}>
+                        {tag.name}
+                      </span>
+                    )}
                   </span>
-                )}
-              </span>
-              {viewedDay !== TODAY && !it.done && (
-                <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="انتقال به امروز">
-                  ⇥
+                  {viewedDay !== TODAY && !it.done && (
+                    <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="انتقال به امروز">
+                      ⇥
+                    </button>
+                  )}
+                  <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+
+            <div className="type-select">
+              {LOG_TYPES.map((t) => (
+                <button
+                  key={t.id}
+                  className={'type-btn' + (logType === t.id ? ' active' : '')}
+                  onClick={() => setLogType(t.id)}
+                >
+                  {t.mark} {t.label}
                 </button>
-              )}
-              <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
-                ✕
+              ))}
+              <button
+                className={'type-btn prio' + (logPriority ? ' active' : '')}
+                onClick={() => setLogPriority((v) => !v)}
+                title="اگه انتخابش کنی، این مورد با علامت * به‌عنوان اولویت بالا مشخص می‌شه"
+              >
+                * اولویت بالا
               </button>
             </div>
-          );
-        })}
 
-        <div className="type-select">
-          {LOG_TYPES.map((t) => (
-            <button
-              key={t.id}
-              className={'type-btn' + (logType === t.id ? ' active' : '')}
-              onClick={() => setLogType(t.id)}
-            >
-              {t.mark} {t.label}
-            </button>
-          ))}
-          <button
-            className={'type-btn prio' + (logPriority ? ' active' : '')}
-            onClick={() => setLogPriority((v) => !v)}
-            title="اگه انتخابش کنی، این مورد با علامت * به‌عنوان اولویت بالا مشخص می‌شه"
-          >
-            * اولویت بالا
-          </button>
-        </div>
+            <div className="cat-select">
+              <button
+                className={'cat-btn' + (logTag === null ? ' active' : '')}
+                style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                onClick={() => setLogTag(null)}
+              >
+                بدون تگ
+              </button>
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c.id}
+                  className={'cat-btn' + (logTag === c.id ? ' active' : '')}
+                  style={{ background: c.bg, color: c.color }}
+                  onClick={() => setLogTag((cur) => (cur === c.id ? null : c.id))}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
 
-        <div className="cat-select">
-          <button
-            className={'cat-btn' + (logTag === null ? ' active' : '')}
-            style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-            onClick={() => setLogTag(null)}
-          >
-            بدون تگ
-          </button>
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.id}
-              className={'cat-btn' + (logTag === c.id ? ' active' : '')}
-              style={{ background: c.bg, color: c.color }}
-              onClick={() => setLogTag((cur) => (cur === c.id ? null : c.id))}
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="add-row">
-          <input
-            placeholder={
-              logType === 'task'
-                ? 'چه کاری داری؟'
-                : logType === 'event'
-                  ? 'چه رویدادی؟'
-                  : logType === 'idea'
-                    ? 'چه ایده‌ای؟'
-                    : 'چی می‌خوای یادداشت کنی؟'
-            }
-            value={logInput}
-            onChange={(e) => setLogInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onAddLog()}
-          />
-          <button onClick={onAddLog}>ثبت</button>
-        </div>
+            <div className="add-row">
+              <input
+                placeholder={
+                  logType === 'task'
+                    ? 'چه کاری داری؟'
+                    : logType === 'event'
+                      ? 'چه رویدادی؟'
+                      : logType === 'idea'
+                        ? 'چه ایده‌ای؟'
+                        : 'چی می‌خوای یادداشت کنی؟'
+                }
+                value={logInput}
+                onChange={(e) => setLogInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && onAddLog()}
+              />
+              <button onClick={onAddLog}>ثبت</button>
+            </div>
+          </>
+        )}
       </Collapsible>
 
       <Collapsible title="مرور روزانه" storageKey="dailyreview">

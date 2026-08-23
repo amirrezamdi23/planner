@@ -10,7 +10,7 @@ export interface HabitCheckPayload {
   habitId: string;
   day: string;
 }
-export type LogItemType = 'task' | 'event' | 'note' | 'idea';
+export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake';
 export interface LogItemPayload {
   day: string;
   text: string;
