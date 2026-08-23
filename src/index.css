@@ -186,6 +186,12 @@ textarea.review {
   resize: vertical;
 }
 
+.saved-hint {
+  color: var(--teal);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .empty {
   color: var(--ink-soft);
   font-size: 13px;

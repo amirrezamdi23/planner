@@ -33,6 +33,7 @@ export default function App() {
   const [logInput, setLogInput] = useState('');
 
   const [review, setReview] = useState('');
+  const [reviewSaved, setReviewSaved] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const reload = useCallback(async () => {
@@ -93,8 +94,10 @@ export default function App() {
     await reload();
   }
 
-  async function onReviewBlur() {
+  async function onSaveReview() {
     await setDailyReview(TODAY, review);
+    setReviewSaved(true);
+    setTimeout(() => setReviewSaved(false), 2000);
   }
 
   if (loading) {
@@ -177,9 +180,15 @@ export default function App() {
           className="review"
           placeholder="امروز چی گذشت؟ (۲-۳ خط کافیه)"
           value={review}
-          onChange={(e) => setReview(e.target.value)}
-          onBlur={onReviewBlur}
+          onChange={(e) => {
+            setReview(e.target.value);
+            setReviewSaved(false);
+          }}
         />
+        <div className="add-row">
+          <button onClick={onSaveReview}>ثبت</button>
+          {reviewSaved && <span className="saved-hint">✓ ذخیره شد</span>}
+        </div>
       </div>
 
       <div className="footnote">
