@@ -2,160 +2,313 @@ import { useEffect, useState, useCallback } from 'react';
 import { dayKey, jalaliLabelForDayKey } from './lib/date';
 import Collapsible from './Collapsible';
 import {
+  listProjectCategories,
+  addProjectCategory,
+  editProjectCategory,
+  deleteProjectCategory,
   listProjects,
   addProject,
+  editProject,
   deleteProject,
   listProjectLog,
   addProjectLogEntry,
   deleteProjectLogEntry,
+  type ProjectCategory,
   type Project,
   type ProjectLogEntry,
 } from './repo';
 
 const TODAY = dayKey(0);
-const SELECTED_KEY = 'selected_project_id';
+const SELECTED_CATEGORY_KEY = 'selected_project_category_id';
+const SELECTED_PROJECT_KEY = 'selected_project_id';
 
 export default function ProjectLogCard() {
+  const [categories, setCategories] = useState<ProjectCategory[]>([]);
+  const [categoryInput, setCategoryInput] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryText, setEditingCategoryText] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    localStorage.getItem(SELECTED_CATEGORY_KEY),
+  );
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectInput, setProjectInput] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(localStorage.getItem(SELECTED_KEY));
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectText, setEditingProjectText] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
+    localStorage.getItem(SELECTED_PROJECT_KEY),
+  );
+
   const [entries, setEntries] = useState<ProjectLogEntry[]>([]);
   const [entryInput, setEntryInput] = useState('');
 
-  const reloadProjects = useCallback(async () => {
-    const list = await listProjects();
-    setProjects(list);
-    if (selectedId && !list.some((p) => p.id === selectedId)) {
-      setSelectedId(null);
-      localStorage.removeItem(SELECTED_KEY);
+  const reloadCategories = useCallback(async () => {
+    const list = await listProjectCategories();
+    setCategories(list);
+    if (selectedCategoryId && !list.some((c) => c.id === selectedCategoryId)) {
+      setSelectedCategoryId(null);
+      localStorage.removeItem(SELECTED_CATEGORY_KEY);
     }
-  }, [selectedId]);
+  }, [selectedCategoryId]);
+
+  const reloadProjects = useCallback(
+    async (categoryId: string | null) => {
+      const list = categoryId ? await listProjects(categoryId) : [];
+      setProjects(list);
+      if (selectedProjectId && !list.some((p) => p.id === selectedProjectId)) {
+        setSelectedProjectId(null);
+        localStorage.removeItem(SELECTED_PROJECT_KEY);
+      }
+    },
+    [selectedProjectId],
+  );
 
   const reloadEntries = useCallback(async (projectId: string | null) => {
     setEntries(projectId ? await listProjectLog(projectId) : []);
   }, []);
 
   useEffect(() => {
-    reloadProjects();
-  }, [reloadProjects]);
+    reloadCategories();
+  }, [reloadCategories]);
 
   useEffect(() => {
-    reloadEntries(selectedId);
-  }, [selectedId, reloadEntries]);
+    reloadProjects(selectedCategoryId);
+  }, [selectedCategoryId, reloadProjects]);
 
+  useEffect(() => {
+    reloadEntries(selectedProjectId);
+  }, [selectedProjectId, reloadEntries]);
+
+  function selectCategory(id: string) {
+    setSelectedCategoryId(id);
+    localStorage.setItem(SELECTED_CATEGORY_KEY, id);
+  }
+  function backToCategories() {
+    setSelectedCategoryId(null);
+    localStorage.removeItem(SELECTED_CATEGORY_KEY);
+    setSelectedProjectId(null);
+    localStorage.removeItem(SELECTED_PROJECT_KEY);
+  }
   function selectProject(id: string) {
-    setSelectedId(id);
-    localStorage.setItem(SELECTED_KEY, id);
+    setSelectedProjectId(id);
+    localStorage.setItem(SELECTED_PROJECT_KEY, id);
+  }
+  function backToProjects() {
+    setSelectedProjectId(null);
+    localStorage.removeItem(SELECTED_PROJECT_KEY);
+  }
+
+  async function onAddCategory() {
+    if (!categoryInput.trim()) return;
+    await addProjectCategory(categoryInput);
+    setCategoryInput('');
+    await reloadCategories();
+  }
+  function onStartEditCategory(c: ProjectCategory) {
+    setEditingCategoryId(c.recId);
+    setEditingCategoryText(c.name);
+  }
+  async function onSaveEditCategory() {
+    if (!editingCategoryId) return;
+    await editProjectCategory(editingCategoryId, editingCategoryText);
+    setEditingCategoryId(null);
+    setEditingCategoryText('');
+    await reloadCategories();
+  }
+  async function onDeleteCategory(recId: string) {
+    if (!window.confirm('این دسته‌بندی و همه‌ی پروژه‌ها و لاگ‌های زیرمجموعه‌اش حذف می‌شن. مطمئنی؟')) return;
+    await deleteProjectCategory(recId);
+    await reloadCategories();
   }
 
   async function onAddProject() {
-    if (!projectInput.trim()) return;
-    await addProject(projectInput);
+    if (!selectedCategoryId || !projectInput.trim()) return;
+    await addProject(projectInput, selectedCategoryId);
     setProjectInput('');
-    await reloadProjects();
+    await reloadProjects(selectedCategoryId);
   }
-
+  function onStartEditProject(p: Project) {
+    setEditingProjectId(p.recId);
+    setEditingProjectText(p.name);
+  }
+  async function onSaveEditProject() {
+    if (!editingProjectId) return;
+    await editProject(editingProjectId, editingProjectText);
+    setEditingProjectId(null);
+    setEditingProjectText('');
+    await reloadProjects(selectedCategoryId);
+  }
   async function onDeleteProject(recId: string) {
+    if (!window.confirm('این پروژه و لاگ‌های ثبت‌شده براش حذف می‌شن. مطمئنی؟')) return;
     await deleteProject(recId);
-    if (selectedId === recId) {
-      setSelectedId(null);
-      localStorage.removeItem(SELECTED_KEY);
-    }
-    await reloadProjects();
+    await reloadProjects(selectedCategoryId);
   }
 
   async function onAddEntry() {
-    if (!selectedId || !entryInput.trim()) return;
-    await addProjectLogEntry(selectedId, TODAY, entryInput);
+    if (!selectedProjectId || !entryInput.trim()) return;
+    await addProjectLogEntry(selectedProjectId, TODAY, entryInput);
     setEntryInput('');
-    await reloadEntries(selectedId);
+    await reloadEntries(selectedProjectId);
   }
-
   async function onDeleteEntry(recId: string) {
     await deleteProjectLogEntry(recId);
-    await reloadEntries(selectedId);
+    await reloadEntries(selectedProjectId);
   }
 
+  const selectedCategory = categories.find((c) => c.id === selectedCategoryId) ?? null;
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) ?? null;
   const [last, ...rest] = entries;
 
-  return (
-    <Collapsible title="لاگ پروژه‌ها" storageKey="projectlog">
-      {projects.length === 0 && <div className="empty">هنوز پروژه‌ای اضافه نکردی.</div>}
-      <div className="type-select">
-        {projects.map((p) => (
-          <button
-            key={p.recId}
-            className={'type-btn' + (selectedId === p.id ? ' active' : '')}
-            onClick={() => selectProject(p.id)}
-          >
-            {p.name}
-          </button>
-        ))}
-      </div>
-      <div className="add-row">
-        <input
-          placeholder="پروژه‌ی جدید (مثلاً پروژه X)…"
-          value={projectInput}
-          onChange={(e) => setProjectInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && onAddProject()}
-        />
-        <button onClick={onAddProject}>افزودن پروژه</button>
-        {selectedId && (
-          <button
-            className="habit-del"
-            onClick={() => onDeleteProject(selectedId)}
-            title="حذف پروژه‌ی انتخاب‌شده"
-          >
-            حذف پروژه
-          </button>
-        )}
-      </div>
-
-      {selectedId && (
-        <>
-          <div className="proj-divider" />
-          {last ? (
-            <div className="last-entry">
-              <div className="last-entry-label">آخرین کار — {jalaliLabelForDayKey(last.day)}</div>
-              <div className="last-entry-row">
-                <div className="last-entry-text">{last.text}</div>
-                <button className="habit-del" onClick={() => onDeleteEntry(last.recId)} title="حذف">
-                  ✕
+  // ---------- step 1: category picker ----------
+  if (!selectedCategory) {
+    return (
+      <Collapsible title="پروژه‌ها" storageKey="projectlog">
+        {categories.length === 0 && <div className="empty">هنوز دسته‌بندی‌ای اضافه نکردی.</div>}
+        {categories.map((c) => (
+          <div className="habit-row" key={c.recId}>
+            {editingCategoryId === c.recId ? (
+              <div className="add-row" style={{ flex: 1, marginTop: 0 }}>
+                <input
+                  value={editingCategoryText}
+                  onChange={(e) => setEditingCategoryText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && onSaveEditCategory()}
+                  autoFocus
+                />
+                <button onClick={onSaveEditCategory}>ذخیره</button>
+                <button className="link-btn" onClick={() => setEditingCategoryId(null)}>
+                  انصراف
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className="empty">هنوز یادداشتی برای این پروژه ثبت نشده.</div>
-          )}
+            ) : (
+              <>
+                <span className="habit-name" style={{ cursor: 'pointer' }} onClick={() => selectCategory(c.id)}>
+                  {c.name}
+                </span>
+                <button className="habit-del" onClick={() => onStartEditCategory(c)} title="ویرایش">
+                  ✎
+                </button>
+                <button className="habit-del" onClick={() => onDeleteCategory(c.recId)} title="حذف">
+                  ✕
+                </button>
+              </>
+            )}
+          </div>
+        ))}
+        <div className="add-row">
+          <input
+            placeholder="دسته‌بندی جدید (مثلاً کاری، شخصی)…"
+            value={categoryInput}
+            onChange={(e) => setCategoryInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onAddCategory()}
+          />
+          <button onClick={onAddCategory}>افزودن دسته‌بندی</button>
+        </div>
+      </Collapsible>
+    );
+  }
 
-          {rest.length > 0 && (
-            <div className="proj-history">
-              {rest.map((e) => (
-                <div className="log-item" key={e.recId}>
-                  <span className="log-mark">–</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{jalaliLabelForDayKey(e.day)}</div>
-                    <span className="log-text">{e.text}</span>
-                  </div>
-                  <button className="habit-del" onClick={() => onDeleteEntry(e.recId)} title="حذف">
-                    ✕
+  // ---------- step 2: project picker within category ----------
+  if (!selectedProject) {
+    return (
+      <Collapsible title="پروژه‌ها" tag={selectedCategory.name} storageKey="projectlog">
+        <button className="link-btn" onClick={backToCategories}>
+          ◂ بازگشت به دسته‌بندی‌ها
+        </button>
+
+        <div style={{ marginTop: 10 }}>
+          {projects.length === 0 && <div className="empty">هنوز پروژه‌ای توی این دسته‌بندی اضافه نکردی.</div>}
+          {projects.map((p) => (
+            <div className="habit-row" key={p.recId}>
+              {editingProjectId === p.recId ? (
+                <div className="add-row" style={{ flex: 1, marginTop: 0 }}>
+                  <input
+                    value={editingProjectText}
+                    onChange={(e) => setEditingProjectText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && onSaveEditProject()}
+                    autoFocus
+                  />
+                  <button onClick={onSaveEditProject}>ذخیره</button>
+                  <button className="link-btn" onClick={() => setEditingProjectId(null)}>
+                    انصراف
                   </button>
                 </div>
-              ))}
+              ) : (
+                <>
+                  <span className="habit-name" style={{ cursor: 'pointer' }} onClick={() => selectProject(p.id)}>
+                    {p.name}
+                  </span>
+                  <button className="habit-del" onClick={() => onStartEditProject(p)} title="ویرایش">
+                    ✎
+                  </button>
+                  <button className="habit-del" onClick={() => onDeleteProject(p.recId)} title="حذف">
+                    ✕
+                  </button>
+                </>
+              )}
             </div>
-          )}
-
+          ))}
           <div className="add-row">
             <input
-              placeholder="امروز روی این پروژه چی‌کار کردی؟"
-              value={entryInput}
-              onChange={(e) => setEntryInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && onAddEntry()}
+              placeholder="پروژه‌ی جدید (مثلاً پروژه X)…"
+              value={projectInput}
+              onChange={(e) => setProjectInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && onAddProject()}
             />
-            <button onClick={onAddEntry}>ثبت</button>
+            <button onClick={onAddProject}>افزودن پروژه</button>
           </div>
-        </>
+        </div>
+      </Collapsible>
+    );
+  }
+
+  // ---------- step 3: project log ----------
+  return (
+    <Collapsible title="پروژه‌ها" tag={`${selectedCategory.name} / ${selectedProject.name}`} storageKey="projectlog">
+      <button className="link-btn" onClick={backToProjects}>
+        ◂ بازگشت به لیست پروژه‌ها
+      </button>
+
+      <div className="proj-divider" />
+      {last ? (
+        <div className="last-entry">
+          <div className="last-entry-label">آخرین کار — {jalaliLabelForDayKey(last.day)}</div>
+          <div className="last-entry-row">
+            <div className="last-entry-text">{last.text}</div>
+            <button className="habit-del" onClick={() => onDeleteEntry(last.recId)} title="حذف">
+              ✕
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="empty">هنوز یادداشتی برای این پروژه ثبت نشده.</div>
       )}
+
+      {rest.length > 0 && (
+        <div className="proj-history">
+          {rest.map((e) => (
+            <div className="log-item" key={e.recId}>
+              <span className="log-mark">–</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{jalaliLabelForDayKey(e.day)}</div>
+                <span className="log-text">{e.text}</span>
+              </div>
+              <button className="habit-del" onClick={() => onDeleteEntry(e.recId)} title="حذف">
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="add-row">
+        <input
+          placeholder="امروز روی این پروژه چی‌کار کردی؟"
+          value={entryInput}
+          onChange={(e) => setEntryInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && onAddEntry()}
+        />
+        <button onClick={onAddEntry}>ثبت</button>
+      </div>
     </Collapsible>
   );
 }

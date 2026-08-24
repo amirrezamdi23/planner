@@ -271,16 +271,73 @@ export async function deletePayment(recId: string): Promise<void> {
   await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
 }
 
+// ---------- project categories ----------
+// Two-step structure: pick a category, then manage its projects as a
+// subgroup — mirrors how the user actually thinks about their work areas.
+export interface ProjectCategoryPayload {
+  name: string;
+}
+export interface ProjectCategory {
+  recId: string;
+  id: string;
+  name: string;
+}
+
+export async function listProjectCategories(): Promise<ProjectCategory[]> {
+  const recs = await liveByType('project_category');
+  return recs
+    .map((r) => ({ recId: r.id, id: r.id, name: (r.payload as ProjectCategoryPayload).name }))
+    .sort((a, b) => a.recId.localeCompare(b.recId));
+}
+
+export async function addProjectCategory(name: string): Promise<void> {
+  if (!name.trim()) return;
+  await db.records.put(makeRecord('project_category', { name: name.trim() } as ProjectCategoryPayload));
+}
+
+export async function editProjectCategory(recId: string, name: string): Promise<void> {
+  if (!name.trim()) return;
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({
+    ...r,
+    payload: { name: name.trim() } as ProjectCategoryPayload,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+// Deleting a category cascades to its projects and their log entries, so
+// nothing orphaned lingers under a category that no longer exists.
+export async function deleteProjectCategory(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const now = new Date().toISOString();
+  await db.records.put({ ...r, deleted: true, updatedAt: now });
+  const projects = await liveByType('project');
+  const logs = await liveByType('project_log');
+  for (const p of projects) {
+    if ((p.payload as ProjectPayload).categoryId !== recId) continue;
+    await db.records.put({ ...p, deleted: true, updatedAt: now });
+    for (const l of logs) {
+      if ((l.payload as ProjectLogPayload).projectId === p.id) {
+        await db.records.put({ ...l, deleted: true, updatedAt: now });
+      }
+    }
+  }
+}
+
 // ---------- project log ----------
 // A per-project running history — pick a project, see what you did last and
 // everything you've done on it since, across however many days it takes.
 export interface ProjectPayload {
   name: string;
+  categoryId: string;
 }
 export interface Project {
   recId: string;
   id: string;
   name: string;
+  categoryId: string;
 }
 export interface ProjectLogPayload {
   projectId: string;
@@ -294,22 +351,46 @@ export interface ProjectLogEntry {
   createdAt: string;
 }
 
-export async function listProjects(): Promise<Project[]> {
+export async function listProjects(categoryId?: string): Promise<Project[]> {
   const recs = await liveByType('project');
   return recs
-    .map((r) => ({ recId: r.id, id: r.id, name: (r.payload as ProjectPayload).name }))
+    .filter((r) => !categoryId || (r.payload as ProjectPayload).categoryId === categoryId)
+    .map((r) => {
+      const p = r.payload as ProjectPayload;
+      return { recId: r.id, id: r.id, name: p.name, categoryId: p.categoryId };
+    })
     .sort((a, b) => a.recId.localeCompare(b.recId));
 }
 
-export async function addProject(name: string): Promise<void> {
-  if (!name.trim()) return;
-  await db.records.put(makeRecord('project', { name: name.trim() } as ProjectPayload));
+export async function addProject(name: string, categoryId: string): Promise<void> {
+  if (!name.trim() || !categoryId) return;
+  await db.records.put(makeRecord('project', { name: name.trim(), categoryId } as ProjectPayload));
 }
 
+export async function editProject(recId: string, name: string): Promise<void> {
+  if (!name.trim()) return;
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as ProjectPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, name: name.trim() },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+// Deleting a project cascades to its log entries.
 export async function deleteProject(recId: string): Promise<void> {
   const r = await db.records.get(recId);
   if (!r) return;
-  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+  const now = new Date().toISOString();
+  await db.records.put({ ...r, deleted: true, updatedAt: now });
+  const logs = await liveByType('project_log');
+  for (const l of logs) {
+    if ((l.payload as ProjectLogPayload).projectId === recId) {
+      await db.records.put({ ...l, deleted: true, updatedAt: now });
+    }
+  }
 }
 
 export async function listProjectLog(projectId: string): Promise<ProjectLogEntry[]> {
