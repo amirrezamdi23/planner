@@ -12,6 +12,7 @@ import { CATEGORIES, categoryInfo } from './categories';
 import SyncCard from './SyncCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
+import TimerCard from './TimerCard';
 import Collapsible from './Collapsible';
 import {
   listLogItems,
@@ -396,6 +397,8 @@ export default function App() {
             </div>
           ))}
       </Collapsible>
+
+      <TimerCard />
 
       <PaymentsCard />
 
