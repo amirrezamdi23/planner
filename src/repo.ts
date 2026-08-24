@@ -367,6 +367,18 @@ export async function addProject(name: string, categoryId: string): Promise<void
   await db.records.put(makeRecord('project', { name: name.trim(), categoryId } as ProjectPayload));
 }
 
+export async function moveProjectToCategory(recId: string, categoryId: string): Promise<void> {
+  if (!categoryId) return;
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as ProjectPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, categoryId },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 export async function editProject(recId: string, name: string): Promise<void> {
   if (!name.trim()) return;
   const r = await db.records.get(recId);
@@ -390,6 +402,37 @@ export async function deleteProject(recId: string): Promise<void> {
     if ((l.payload as ProjectLogPayload).projectId === recId) {
       await db.records.put({ ...l, deleted: true, updatedAt: now });
     }
+  }
+}
+
+// One-time, idempotent migration: older projects were created before
+// categories existed, so they have no categoryId. Bucket them (and always
+// keep available) under a "سایر" (Other) category with its own "سایر"
+// catch-all project — the user can move any of them elsewhere afterward.
+const OTHER_NAME = 'سایر';
+
+export async function ensureOtherCategoryAndMigrateLegacyProjects(): Promise<void> {
+  let categories = await listProjectCategories();
+  let other = categories.find((c) => c.name === OTHER_NAME);
+  if (!other) {
+    await addProjectCategory(OTHER_NAME);
+    categories = await listProjectCategories();
+    other = categories.find((c) => c.name === OTHER_NAME);
+  }
+  if (!other) return;
+
+  const now = new Date().toISOString();
+  const recs = await liveByType('project');
+  for (const r of recs) {
+    const p = r.payload as ProjectPayload;
+    if (!p.categoryId) {
+      await db.records.put({ ...r, payload: { ...p, categoryId: other.id }, updatedAt: now });
+    }
+  }
+
+  const projectsInOther = await listProjects(other.id);
+  if (!projectsInOther.some((p) => p.name === OTHER_NAME)) {
+    await addProject(OTHER_NAME, other.id);
   }
 }
 

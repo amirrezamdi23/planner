@@ -10,6 +10,8 @@ import {
   addProject,
   editProject,
   deleteProject,
+  moveProjectToCategory,
+  ensureOtherCategoryAndMigrateLegacyProjects,
   listProjectLog,
   addProjectLogEntry,
   deleteProjectLogEntry,
@@ -68,8 +70,19 @@ export default function ProjectLogCard() {
   }, []);
 
   useEffect(() => {
-    reloadCategories();
-  }, [reloadCategories]);
+    (async () => {
+      // Guard with a localStorage flag (not just re-checking DB state) so
+      // React StrictMode's double-invoke in dev can't race and create the
+      // "سایر" category/project twice.
+      if (!localStorage.getItem('migrated_other_category_v1')) {
+        localStorage.setItem('migrated_other_category_v1', '1');
+        await ensureOtherCategoryAndMigrateLegacyProjects();
+      }
+      await reloadCategories();
+    })();
+    // Runs once on mount — migration is idempotent, no need to re-run per render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     reloadProjects(selectedCategoryId);
@@ -237,6 +250,21 @@ export default function ProjectLogCard() {
                   <span className="habit-name" style={{ cursor: 'pointer' }} onClick={() => selectProject(p.id)}>
                     {p.name}
                   </span>
+                  <select
+                    className="mini-select"
+                    value={p.categoryId}
+                    title="انتقال به دسته‌بندی دیگر"
+                    onChange={async (e) => {
+                      await moveProjectToCategory(p.recId, e.target.value);
+                      await reloadProjects(selectedCategoryId);
+                    }}
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
                   <button className="habit-del" onClick={() => onStartEditProject(p)} title="ویرایش">
                     ✎
                   </button>
