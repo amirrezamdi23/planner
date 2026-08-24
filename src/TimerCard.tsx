@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import Collapsible from './Collapsible';
+import { getTimerSound, setTimerSound, clearTimerSound } from './db';
 
 const STAGE_COUNT = 3;
 
@@ -16,10 +17,29 @@ export default function TimerCard() {
   const [endAt, setEndAt] = useState<number | null>(null);
   const [remainingMs, setRemainingMs] = useState(0);
   const [ringing, setRinging] = useState(false);
+  const [soundName, setSoundName] = useState<string | null>(null);
+  const [soundUrl, setSoundUrl] = useState<string | null>(null);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const ringIntervalRef = useRef<number | null>(null);
   const origTitleRef = useRef(document.title);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const soundUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const stored = await getTimerSound();
+      if (stored) {
+        const url = URL.createObjectURL(stored.blob);
+        soundUrlRef.current = url;
+        setSoundUrl(url);
+        setSoundName(stored.name);
+      }
+    })();
+    return () => {
+      if (soundUrlRef.current) URL.revokeObjectURL(soundUrlRef.current);
+    };
+  }, []);
 
   function ensureAudioCtx(): AudioContext {
     if (!audioCtxRef.current) {
@@ -49,12 +69,25 @@ export default function TimerCard() {
   }
 
   function startRinging() {
-    beep();
-    ringIntervalRef.current = window.setInterval(beep, 600);
+    if (soundUrl && audioRef.current) {
+      audioRef.current.loop = true;
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => {
+        beep();
+        ringIntervalRef.current = window.setInterval(beep, 600);
+      });
+    } else {
+      beep();
+      ringIntervalRef.current = window.setInterval(beep, 600);
+    }
     document.title = '⏰ زنگ خورد! — ' + origTitleRef.current;
     if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
   }
   function stopRinging() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
     if (ringIntervalRef.current !== null) {
       clearInterval(ringIntervalRef.current);
       ringIntervalRef.current = null;
@@ -92,7 +125,15 @@ export default function TimerCard() {
   }
 
   function onStart() {
-    ensureAudioCtx(); // unlock audio while we still have a real user gesture
+    ensureAudioCtx(); // unlock the beep fallback while we still have a real user gesture
+    if (audioRef.current) {
+      // Unlock the <audio> element too, so a later programmatic play() (when
+      // the stage actually ends) isn't blocked by autoplay restrictions.
+      audioRef.current
+        .play()
+        .then(() => audioRef.current?.pause())
+        .catch(() => {});
+    }
     startStage(0);
   }
 
@@ -114,8 +155,37 @@ export default function TimerCard() {
     setEndAt(null);
   }
 
+  async function onPickSound(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    await setTimerSound(file);
+    if (soundUrlRef.current) URL.revokeObjectURL(soundUrlRef.current);
+    const url = URL.createObjectURL(file);
+    soundUrlRef.current = url;
+    setSoundUrl(url);
+    setSoundName(file.name);
+  }
+
+  async function onRemoveSound() {
+    await clearTimerSound();
+    if (soundUrlRef.current) URL.revokeObjectURL(soundUrlRef.current);
+    soundUrlRef.current = null;
+    setSoundUrl(null);
+    setSoundName(null);
+  }
+
+  function onPreviewSound() {
+    if (!audioRef.current) return;
+    audioRef.current.loop = false;
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(() => {});
+    window.setTimeout(() => audioRef.current?.pause(), 4000);
+  }
+
   return (
     <Collapsible title="تایمر سه‌مرحله‌ای" storageKey="timer3">
+      <audio ref={audioRef} src={soundUrl ?? undefined} style={{ display: 'none' }} />
       {stageIndex === -1 ? (
         <>
           <div className="empty">
@@ -134,6 +204,29 @@ export default function TimerCard() {
               <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>دقیقه</span>
             </div>
           ))}
+
+          <div className="add-row">
+            <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-soft)' }}>
+              {soundName ? `🎵 زنگ دلخواه: ${soundName}` : 'زنگ پیش‌فرض (بوق ساده)'}
+            </span>
+          </div>
+          <div className="add-row">
+            <label className="mini-btn" style={{ cursor: 'pointer' }}>
+              انتخاب آهنگ برای زنگ
+              <input type="file" accept="audio/*" onChange={onPickSound} style={{ display: 'none' }} />
+            </label>
+            {soundName && (
+              <>
+                <button className="link-btn" onClick={onPreviewSound}>
+                  پخش نمونه
+                </button>
+                <button className="link-btn" onClick={onRemoveSound}>
+                  حذف و برگشت به بوق
+                </button>
+              </>
+            )}
+          </div>
+
           <div className="add-row">
             <button onClick={onStart}>شروع تایمر</button>
           </div>
