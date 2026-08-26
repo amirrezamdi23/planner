@@ -55,13 +55,23 @@ export default function PaymentsCard() {
         : daysUntilDate(p.dueDate ?? dueDate),
   }));
 
+  // Overdue once-payments are pulled out and always pinned at the top,
+  // regardless of month, until the user checks them off — they shouldn't be
+  // able to silently scroll out of view behind "نمایش بقیه".
+  const overdue = withDays
+    .filter(({ p, days }) => p.kind === 'once' && !p.paid && days < 0)
+    .sort((a, b) => a.days - b.days);
+  const overdueIds = new Set(overdue.map(({ p }) => p.recId));
+
   // Recurring payments recur every month, so they're always "current" — only
   // one-time payments get tucked away when their due date is in another month.
   const thisMonth = withDays
-    .filter(({ p }) => p.kind === 'recurring' || (p.dueDate && isInCurrentJalaliMonth(p.dueDate)))
+    .filter(
+      ({ p }) => !overdueIds.has(p.recId) && (p.kind === 'recurring' || (p.dueDate && isInCurrentJalaliMonth(p.dueDate))),
+    )
     .sort((a, b) => a.days - b.days);
   const others = withDays
-    .filter(({ p }) => p.kind === 'once' && p.dueDate && !isInCurrentJalaliMonth(p.dueDate))
+    .filter(({ p }) => !overdueIds.has(p.recId) && p.kind === 'once' && p.dueDate && !isInCurrentJalaliMonth(p.dueDate))
     .sort((a, b) => a.days - b.days);
 
   function renderRow({ p, days }: { p: Payment; days: number }) {
@@ -113,7 +123,10 @@ export default function PaymentsCard() {
 
   return (
     <Collapsible title="پرداخت‌ها و اقساط" storageKey="payments">
-      {thisMonth.length === 0 && others.length === 0 && <div className="empty">پرداختی ثبت نشده.</div>}
+      {overdue.length === 0 && thisMonth.length === 0 && others.length === 0 && (
+        <div className="empty">پرداختی ثبت نشده.</div>
+      )}
+      {overdue.map(renderRow)}
       {thisMonth.map(renderRow)}
 
       {others.length > 0 && (

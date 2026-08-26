@@ -268,7 +268,9 @@ header {
   color: #fff;
   border-radius: 8px;
 }
-.pay-row.overdue .pay-days {
+.pay-row.overdue .pay-days,
+.pay-row.overdue .pay-sub,
+.pay-row.overdue .pay-check {
   color: #fff;
 }
 .pay-name {

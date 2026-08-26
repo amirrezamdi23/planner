@@ -6,20 +6,26 @@ import {
   todayWeekdayLabel,
   jalaliLabelForDayKey,
   jalaliDateOnlyLabel,
+  jalaliTupleForDayKey,
   daysBetweenDayKeys,
 } from './lib/date';
-import { CATEGORIES, categoryInfo } from './categories';
 import SyncCard from './SyncCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import TimerCard from './TimerCard';
+import SleepReportCard from './SleepReportCard';
 import Collapsible from './Collapsible';
+import JalaliDateInput from './JalaliDateInput';
 import {
   listLogItems,
   addLogItem,
+  editLogItem,
   toggleLogDone,
   deleteLogItem,
   moveLogItem,
+  addNapEntry,
+  listProjectCategories,
+  listProjects,
   listDailyReviewEntries,
   addDailyReviewEntry,
   editDailyReviewEntry,
@@ -27,6 +33,8 @@ import {
   type LogItem,
   type LogItemType,
   type DailyReviewEntry,
+  type ProjectCategory,
+  type Project,
 } from './repo';
 
 const TODAY = dayKey(0);
@@ -50,11 +58,25 @@ export default function App() {
   const [logInput, setLogInput] = useState('');
   const [logType, setLogType] = useState<LogItemType>('task');
   const [logPriority, setLogPriority] = useState(false);
-  const [logTag, setLogTag] = useState<string | null>(null);
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [logCategoryId, setLogCategoryId] = useState<string | null>(null);
+  const [logProjectId, setLogProjectId] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [sleepTimeInput, setSleepTimeInput] = useState('');
   const [wakeTimeInput, setWakeTimeInput] = useState('');
+  const [napStartInput, setNapStartInput] = useState('');
+  const [napDurationInput, setNapDurationInput] = useState('');
 
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editingLogText, setEditingLogText] = useState('');
+  const [editingLogDayKey, setEditingLogDayKey] = useState(TODAY);
+
+  const [projectCategories, setProjectCategories] = useState<ProjectCategory[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [addFormProjects, setAddFormProjects] = useState<Project[]>([]);
+
+  const [sleepDataVersion, setSleepDataVersion] = useState(0);
+
+  const [reviewDay, setReviewDay] = useState(TODAY);
   const [reviewInput, setReviewInput] = useState('');
   const [reviewEntries, setReviewEntries] = useState<DailyReviewEntry[]>([]);
   const [reviewListOpen, setReviewListOpen] = useState(true);
@@ -78,13 +100,38 @@ export default function App() {
   useEffect(() => {
     (async () => {
       await reload();
+      const [cats, projects] = await Promise.all([listProjectCategories(), listProjects()]);
+      setProjectCategories(cats);
+      setAllProjects(projects);
       setLoading(false);
     })();
   }, [reload]);
 
+  useEffect(() => {
+    if (!logCategoryId) {
+      setAddFormProjects([]);
+      return;
+    }
+    listProjects(logCategoryId).then(setAddFormProjects);
+  }, [logCategoryId]);
+
+  function categoryName(id?: string): string | null {
+    if (!id) return null;
+    return projectCategories.find((c) => c.id === id)?.name ?? null;
+  }
+  function projectName(id?: string): string | null {
+    if (!id) return null;
+    return allProjects.find((p) => p.id === id)?.name ?? null;
+  }
+
+  function onSelectLogCategory(catId: string) {
+    setLogCategoryId((cur) => (cur === catId ? null : catId));
+    setLogProjectId(null);
+  }
+
   async function onAddLog() {
     if (!logInput.trim()) return;
-    await addLogItem(viewedDay, logInput, logType, logPriority, logTag ?? undefined);
+    await addLogItem(viewedDay, logInput, logType, logPriority, logCategoryId ?? undefined, logProjectId ?? undefined);
     setLogInput('');
     setLogPriority(false);
     await reload();
@@ -94,29 +141,61 @@ export default function App() {
     await reload();
   }
   async function onDeleteLog(recId: string) {
+    const isNap = logItems.some((it) => it.recId === recId && it.itemType === 'nap');
     await deleteLogItem(recId);
     await reload();
+    if (isNap) setSleepDataVersion((v) => v + 1);
   }
   async function onMigrateToToday(recId: string) {
     await moveLogItem(recId, TODAY);
     await reload();
   }
+  function onStartEditLog(it: LogItem) {
+    setEditingLogId(it.recId);
+    setEditingLogText(it.text);
+    setEditingLogDayKey(it.day);
+  }
+  async function onSaveEditLog() {
+    if (!editingLogId) return;
+    const original = logItems.find((it) => it.recId === editingLogId);
+    await editLogItem(editingLogId, editingLogText);
+    if (original && original.day !== editingLogDayKey) {
+      await moveLogItem(editingLogId, editingLogDayKey);
+    }
+    setEditingLogId(null);
+    await reload();
+  }
+  function onCancelEditLog() {
+    setEditingLogId(null);
+  }
+
   async function onLogSleep() {
     if (!sleepTimeInput) return;
     await addLogItem(prevDay, sleepTimeInput, 'sleep', false);
     setSleepTimeInput('');
     await reload();
+    setSleepDataVersion((v) => v + 1);
   }
   async function onLogWake() {
     if (!wakeTimeInput) return;
     await addLogItem(viewedDay, wakeTimeInput, 'wake', false);
     setWakeTimeInput('');
     await reload();
+    setSleepDataVersion((v) => v + 1);
+  }
+  async function onAddNap() {
+    const minutes = parseInt(napDurationInput, 10);
+    if (!napStartInput || !minutes || minutes <= 0) return;
+    await addNapEntry(viewedDay, napStartInput, minutes);
+    setNapStartInput('');
+    setNapDurationInput('');
+    await reload();
+    setSleepDataVersion((v) => v + 1);
   }
 
   async function onAddReview() {
     if (!reviewInput.trim()) return;
-    await addDailyReviewEntry(TODAY, reviewInput);
+    await addDailyReviewEntry(reviewDay, reviewInput);
     setReviewInput('');
     await reload();
   }
@@ -147,8 +226,13 @@ export default function App() {
   const sleepEntry = prevDayLogItems.find((it) => it.itemType === 'sleep');
   const wakeEntry = logItems.find((it) => it.itemType === 'wake');
   const dayUnlocked = !!sleepEntry && !!wakeEntry;
-  const taskLogItems = logItems.filter((it) => it.itemType !== 'sleep' && it.itemType !== 'wake');
-  const visibleLogItems = tagFilter ? taskLogItems.filter((it) => it.tag === tagFilter) : taskLogItems;
+  const napItems = logItems.filter((it) => it.itemType === 'nap');
+  const taskLogItems = logItems.filter(
+    (it) => it.itemType !== 'sleep' && it.itemType !== 'wake' && it.itemType !== 'nap',
+  );
+  const visibleLogItems = categoryFilter
+    ? taskLogItems.filter((it) => it.categoryId === categoryFilter)
+    : taskLogItems;
 
   return (
     <div className="wrap">
@@ -208,20 +292,46 @@ export default function App() {
               🌙 {sleepEntry!.text} — ☀️ {wakeEntry!.text}
             </div>
 
+            <Collapsible title="خواب میان‌روزی" tag={napItems.length ? String(napItems.length) : undefined} storageKey="nap">
+              {napItems.length === 0 && <div className="empty">هنوز چرتی برای این روز ثبت نشده.</div>}
+              {napItems.map((n) => (
+                <div className="log-item" key={n.recId}>
+                  <span className="log-mark">💤</span>
+                  <span className="log-text">
+                    {n.text} — {n.durationMin} دقیقه
+                  </span>
+                  <button className="habit-del" onClick={() => onDeleteLog(n.recId)} title="حذف">
+                    ✕
+                  </button>
+                </div>
+              ))}
+              <div className="add-row">
+                <input type="time" value={napStartInput} onChange={(e) => setNapStartInput(e.target.value)} />
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="مدت (دقیقه)"
+                  style={{ maxWidth: 100 }}
+                  value={napDurationInput}
+                  onChange={(e) => setNapDurationInput(e.target.value)}
+                />
+                <button onClick={onAddNap}>ثبت چرت</button>
+              </div>
+            </Collapsible>
+
             <div className="cat-select">
               <button
-                className={'cat-btn' + (tagFilter === null ? ' active' : '')}
+                className={'cat-btn' + (categoryFilter === null ? ' active' : '')}
                 style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                onClick={() => setTagFilter(null)}
+                onClick={() => setCategoryFilter(null)}
               >
                 همه
               </button>
-              {CATEGORIES.map((c) => (
+              {projectCategories.map((c) => (
                 <button
                   key={c.id}
-                  className={'cat-btn' + (tagFilter === c.id ? ' active' : '')}
-                  style={{ background: c.bg, color: c.color }}
-                  onClick={() => setTagFilter((f) => (f === c.id ? null : c.id))}
+                  className={'cat-btn' + (categoryFilter === c.id ? ' active' : '')}
+                  onClick={() => setCategoryFilter((f) => (f === c.id ? null : c.id))}
                 >
                   {c.name}
                 </button>
@@ -232,7 +342,40 @@ export default function App() {
             {visibleLogItems.map((it) => {
               const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
               const canToggle = it.itemType === 'task';
-              const tag = it.tag ? categoryInfo(it.tag) : null;
+              const catName = categoryName(it.categoryId);
+              const projName = projectName(it.projectId);
+              const isEditing = editingLogId === it.recId;
+
+              if (isEditing) {
+                return (
+                  <div className="log-item" key={it.recId}>
+                    <div style={{ flex: 1 }}>
+                      <div className="add-row" style={{ marginTop: 0 }}>
+                        <input
+                          value={editingLogText}
+                          onChange={(e) => setEditingLogText(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && onSaveEditLog()}
+                          autoFocus
+                        />
+                      </div>
+                      <div className="add-row">
+                        <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>انتقال به تاریخ:</span>
+                        <JalaliDateInput
+                          value={jalaliTupleForDayKey(editingLogDayKey)}
+                          onChange={(_jalali, newDayKey) => setEditingLogDayKey(newDayKey)}
+                        />
+                      </div>
+                      <div className="add-row">
+                        <button onClick={onSaveEditLog}>ذخیره</button>
+                        <button className="link-btn" onClick={onCancelEditLog}>
+                          انصراف
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div className="log-item" key={it.recId}>
                   {canToggle ? (
@@ -249,12 +392,16 @@ export default function App() {
                   <span className={'log-text' + (it.done ? ' done' : '')}>
                     {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
                     {it.text}
-                    {tag && (
-                      <span className="pill" style={{ background: tag.bg, color: tag.color, marginInlineStart: 6 }}>
-                        {tag.name}
+                    {catName && (
+                      <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
+                        {catName}
+                        {projName ? ` › ${projName}` : ''}
                       </span>
                     )}
                   </span>
+                  <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
+                    ✎
+                  </button>
                   {viewedDay !== TODAY && !it.done && (
                     <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="انتقال به امروز">
                       ⇥
@@ -288,23 +435,46 @@ export default function App() {
 
             <div className="cat-select">
               <button
-                className={'cat-btn' + (logTag === null ? ' active' : '')}
+                className={'cat-btn' + (logCategoryId === null ? ' active' : '')}
                 style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                onClick={() => setLogTag(null)}
+                onClick={() => {
+                  setLogCategoryId(null);
+                  setLogProjectId(null);
+                }}
               >
-                بدون تگ
+                بدون دسته‌بندی
               </button>
-              {CATEGORIES.map((c) => (
+              {projectCategories.map((c) => (
                 <button
                   key={c.id}
-                  className={'cat-btn' + (logTag === c.id ? ' active' : '')}
-                  style={{ background: c.bg, color: c.color }}
-                  onClick={() => setLogTag((cur) => (cur === c.id ? null : c.id))}
+                  className={'cat-btn' + (logCategoryId === c.id ? ' active' : '')}
+                  onClick={() => onSelectLogCategory(c.id)}
                 >
                   {c.name}
                 </button>
               ))}
             </div>
+
+            {logCategoryId && (
+              <div className="cat-select" style={{ paddingInlineStart: 12 }}>
+                <button
+                  className={'cat-btn' + (logProjectId === null ? ' active' : '')}
+                  style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                  onClick={() => setLogProjectId(null)}
+                >
+                  بدون پروژه
+                </button>
+                {addFormProjects.map((p) => (
+                  <button
+                    key={p.id}
+                    className={'cat-btn' + (logProjectId === p.id ? ' active' : '')}
+                    onClick={() => setLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="add-row">
               <input
@@ -328,9 +498,26 @@ export default function App() {
       </Collapsible>
 
       <Collapsible title="مرور روزانه" storageKey="dailyreview">
+        <div className="day-nav">
+          <button className="mini-btn" onClick={() => setReviewDay((d) => shiftDayKey(d, -1))} title="روز قبل">
+            ◂
+          </button>
+          <span className="day-nav-label">
+            {reviewDay === TODAY ? 'برای امروز — ' : 'برای '}
+            {jalaliLabelForDayKey(reviewDay)}
+          </span>
+          <button className="mini-btn" onClick={() => setReviewDay((d) => shiftDayKey(d, 1))} title="روز بعد">
+            ▸
+          </button>
+          {reviewDay !== TODAY && (
+            <button className="link-btn" onClick={() => setReviewDay(TODAY)}>
+              برگشت به امروز
+            </button>
+          )}
+        </div>
         <textarea
           className="review"
-          placeholder="امروز چی گذشت؟ (۲-۳ خط کافیه)"
+          placeholder="چی گذشت؟ (۲-۳ خط کافیه)"
           value={reviewInput}
           onChange={(e) => setReviewInput(e.target.value)}
         />
@@ -397,6 +584,8 @@ export default function App() {
             </div>
           ))}
       </Collapsible>
+
+      <SleepReportCard refreshSignal={sleepDataVersion} />
 
       <TimerCard />
 

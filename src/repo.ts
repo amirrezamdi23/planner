@@ -1,5 +1,5 @@
 import db, { makeRecord, type Rec } from './db';
-import { recurringPaymentCycle, jalaliCycleKey } from './lib/date';
+import { recurringPaymentCycle, jalaliCycleKey, shiftDayKey } from './lib/date';
 
 // ---------- payload shapes ----------
 export interface HabitPayload {
@@ -10,14 +10,16 @@ export interface HabitCheckPayload {
   habitId: string;
   day: string;
 }
-export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake';
+export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake' | 'nap';
 export interface LogItemPayload {
   day: string;
   text: string;
   done: boolean;
   itemType: LogItemType;
   priority: boolean;
-  tag?: string;
+  categoryId?: string;
+  projectId?: string;
+  durationMin?: number; // only used by 'nap'
 }
 export interface DailyReviewPayload {
   day: string;
@@ -32,11 +34,14 @@ export interface Habit {
 }
 export interface LogItem {
   recId: string;
+  day: string;
   text: string;
   done: boolean;
   itemType: LogItemType;
   priority: boolean;
-  tag?: string;
+  categoryId?: string;
+  projectId?: string;
+  durationMin?: number;
 }
 
 async function liveByType(type: Rec['type']): Promise<Rec[]> {
@@ -96,7 +101,17 @@ export async function listLogItems(day: string): Promise<LogItem[]> {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((r) => {
       const p = r.payload as LogItemPayload;
-      return { recId: r.id, text: p.text, done: p.done, itemType: p.itemType, priority: p.priority, tag: p.tag };
+      return {
+        recId: r.id,
+        day: p.day,
+        text: p.text,
+        done: p.done,
+        itemType: p.itemType,
+        priority: p.priority,
+        categoryId: p.categoryId,
+        projectId: p.projectId,
+        durationMin: p.durationMin,
+      };
     });
 }
 
@@ -105,7 +120,8 @@ export async function addLogItem(
   text: string,
   itemType: LogItemType,
   priority: boolean,
-  tag?: string,
+  categoryId?: string,
+  projectId?: string,
 ): Promise<void> {
   if (!text.trim()) return;
   await db.records.put(
@@ -115,7 +131,35 @@ export async function addLogItem(
       done: false,
       itemType,
       priority,
-      tag,
+      categoryId,
+      projectId,
+    } as LogItemPayload),
+  );
+}
+
+export async function editLogItem(recId: string, text: string): Promise<void> {
+  if (!text.trim()) return;
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, text: text.trim() },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+// Midday naps: same time-log idea as sleep/wake, but with a duration too.
+export async function addNapEntry(day: string, startTime: string, durationMin: number): Promise<void> {
+  if (!startTime || durationMin <= 0) return;
+  await db.records.put(
+    makeRecord('log_item', {
+      day,
+      text: startTime,
+      done: false,
+      itemType: 'nap',
+      priority: false,
+      durationMin,
     } as LogItemPayload),
   );
 }
@@ -148,6 +192,55 @@ export async function moveLogItem(recId: string, newDay: string): Promise<void> 
     payload: { ...p, day: newDay },
     updatedAt: new Date().toISOString(),
   });
+}
+
+// ---------- sleep report ----------
+// Pulls every sleep/wake/nap entry ever logged and groups them per "night" —
+// a sleep entry on day D pairs with the wake entry on day D+1, since that's
+// how the quick-log gate itself records them.
+export interface SleepDayReport {
+  day: string; // the wake day — the report row's anchor date
+  sleepTime?: string;
+  wakeTime?: string;
+  nightDurationMin?: number;
+  naps: { recId: string; start: string; durationMin: number }[];
+  napTotalMin: number;
+}
+
+export async function listSleepReports(): Promise<SleepDayReport[]> {
+  const recs = await liveByType('log_item');
+  const sleeps = new Map<string, string>();
+  const wakes = new Map<string, string>();
+  const naps = new Map<string, { recId: string; start: string; durationMin: number }[]>();
+
+  for (const r of recs) {
+    const p = r.payload as LogItemPayload;
+    if (p.itemType === 'sleep') sleeps.set(p.day, p.text);
+    else if (p.itemType === 'wake') wakes.set(p.day, p.text);
+    else if (p.itemType === 'nap') {
+      const arr = naps.get(p.day) ?? [];
+      arr.push({ recId: r.id, start: p.text, durationMin: p.durationMin ?? 0 });
+      naps.set(p.day, arr);
+    }
+  }
+
+  const days = new Set<string>([...wakes.keys(), ...naps.keys()]);
+  const result: SleepDayReport[] = [];
+  for (const day of days) {
+    const wakeTime = wakes.get(day);
+    const prevDay = shiftDayKey(day, -1);
+    const sleepTime = sleeps.get(prevDay);
+    let nightDurationMin: number | undefined;
+    if (sleepTime && wakeTime) {
+      const sleepDt = new Date(`${prevDay}T${sleepTime}:00`);
+      const wakeDt = new Date(`${day}T${wakeTime}:00`);
+      nightDurationMin = Math.round((wakeDt.getTime() - sleepDt.getTime()) / 60000);
+    }
+    const napList = (naps.get(day) ?? []).sort((a, b) => a.start.localeCompare(b.start));
+    const napTotalMin = napList.reduce((sum, n) => sum + n.durationMin, 0);
+    result.push({ day, sleepTime, wakeTime, nightDurationMin, naps: napList, napTotalMin });
+  }
+  return result.sort((a, b) => b.day.localeCompare(a.day));
 }
 
 // ---------- daily review ----------

@@ -76,6 +76,11 @@ export function jalaliLabelForDayKey(key: string): string {
   return `${weekday} ${jd} ${JALALI_MONTHS[jm - 1]} ${jy}`;
 }
 
+export function jalaliTupleForDayKey(key: string): [number, number, number] {
+  const [y, m, d] = key.split('-').map(Number);
+  return gregorianToJalali(y, m, d);
+}
+
 export function jalaliMonthLen(_jy: number, jm: number): number {
   if (jm <= 6) return 31;
   if (jm <= 11) return 30;
