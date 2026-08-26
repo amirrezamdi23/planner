@@ -24,6 +24,7 @@ import {
   deleteLogItem,
   moveLogItem,
   addNapEntry,
+  addNapNone,
   listProjectCategories,
   listProjects,
   listDailyReviewEntries,
@@ -65,14 +66,19 @@ export default function App() {
   const [wakeTimeInput, setWakeTimeInput] = useState('');
   const [napStartInput, setNapStartInput] = useState('');
   const [napDurationInput, setNapDurationInput] = useState('');
+  const [prevNapStartInput, setPrevNapStartInput] = useState('');
+  const [prevNapDurationInput, setPrevNapDurationInput] = useState('');
 
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingLogText, setEditingLogText] = useState('');
   const [editingLogDayKey, setEditingLogDayKey] = useState(TODAY);
+  const [editingLogCategoryId, setEditingLogCategoryId] = useState<string | null>(null);
+  const [editingLogProjectId, setEditingLogProjectId] = useState<string | null>(null);
 
   const [projectCategories, setProjectCategories] = useState<ProjectCategory[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [addFormProjects, setAddFormProjects] = useState<Project[]>([]);
+  const [editFormProjects, setEditFormProjects] = useState<Project[]>([]);
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
@@ -115,6 +121,14 @@ export default function App() {
     listProjects(logCategoryId).then(setAddFormProjects);
   }, [logCategoryId]);
 
+  useEffect(() => {
+    if (!editingLogCategoryId) {
+      setEditFormProjects([]);
+      return;
+    }
+    listProjects(editingLogCategoryId).then(setEditFormProjects);
+  }, [editingLogCategoryId]);
+
   function categoryName(id?: string): string | null {
     if (!id) return null;
     return projectCategories.find((c) => c.id === id)?.name ?? null;
@@ -127,6 +141,10 @@ export default function App() {
   function onSelectLogCategory(catId: string) {
     setLogCategoryId((cur) => (cur === catId ? null : catId));
     setLogProjectId(null);
+  }
+  function onSelectEditCategory(catId: string) {
+    setEditingLogCategoryId((cur) => (cur === catId ? null : catId));
+    setEditingLogProjectId(null);
   }
 
   async function onAddLog() {
@@ -154,11 +172,18 @@ export default function App() {
     setEditingLogId(it.recId);
     setEditingLogText(it.text);
     setEditingLogDayKey(it.day);
+    setEditingLogCategoryId(it.categoryId ?? null);
+    setEditingLogProjectId(it.projectId ?? null);
   }
   async function onSaveEditLog() {
     if (!editingLogId) return;
     const original = logItems.find((it) => it.recId === editingLogId);
-    await editLogItem(editingLogId, editingLogText);
+    await editLogItem(
+      editingLogId,
+      editingLogText,
+      editingLogCategoryId ?? undefined,
+      editingLogProjectId ?? undefined,
+    );
     if (original && original.day !== editingLogDayKey) {
       await moveLogItem(editingLogId, editingLogDayKey);
     }
@@ -167,6 +192,21 @@ export default function App() {
   }
   function onCancelEditLog() {
     setEditingLogId(null);
+  }
+
+  async function onNoNapPrevDay() {
+    await addNapNone(prevDay);
+    await reload();
+    setSleepDataVersion((v) => v + 1);
+  }
+  async function onLogPrevDayNap() {
+    const minutes = parseInt(prevNapDurationInput, 10);
+    if (!prevNapStartInput || !minutes || minutes <= 0) return;
+    await addNapEntry(prevDay, prevNapStartInput, minutes);
+    setPrevNapStartInput('');
+    setPrevNapDurationInput('');
+    await reload();
+    setSleepDataVersion((v) => v + 1);
   }
 
   async function onLogSleep() {
@@ -225,10 +265,18 @@ export default function App() {
 
   const sleepEntry = prevDayLogItems.find((it) => it.itemType === 'sleep');
   const wakeEntry = logItems.find((it) => it.itemType === 'wake');
-  const dayUnlocked = !!sleepEntry && !!wakeEntry;
-  const napItems = logItems.filter((it) => it.itemType === 'nap');
+  const napResolvedPrevDay = prevDayLogItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
+  const napResolvedViewedDay = logItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
+  const gateStep: 'nap' | 'sleep' | 'wake' | 'unlocked' = !napResolvedPrevDay
+    ? 'nap'
+    : !sleepEntry
+      ? 'sleep'
+      : !wakeEntry
+        ? 'wake'
+        : 'unlocked';
+  const dayUnlocked = gateStep === 'unlocked';
   const taskLogItems = logItems.filter(
-    (it) => it.itemType !== 'sleep' && it.itemType !== 'wake' && it.itemType !== 'nap',
+    (it) => it.itemType !== 'sleep' && it.itemType !== 'wake' && it.itemType !== 'nap' && it.itemType !== 'nap_none',
   );
   const visibleLogItems = categoryFilter
     ? taskLogItems.filter((it) => it.categoryId === categoryFilter)
@@ -264,7 +312,32 @@ export default function App() {
 
         {!dayUnlocked ? (
           <div className="sleep-gate">
-            {!sleepEntry ? (
+            {gateStep === 'nap' && (
+              <>
+                <div className="empty">
+                  قبل از ثبت خواب دیشب، اول بگو دیروز ({jalaliDateOnlyLabel(prevDay)}) چرت زدی یا نه.
+                </div>
+                <div className="add-row">
+                  <button onClick={onNoNapPrevDay}>چرت نزدم</button>
+                </div>
+                <div className="empty" style={{ marginTop: 4 }}>
+                  یا اگه زدی، فقط ساعت شروع و مدتش رو بزن:
+                </div>
+                <div className="add-row">
+                  <input type="time" value={prevNapStartInput} onChange={(e) => setPrevNapStartInput(e.target.value)} />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="مدت (دقیقه)"
+                    style={{ maxWidth: 100 }}
+                    value={prevNapDurationInput}
+                    onChange={(e) => setPrevNapDurationInput(e.target.value)}
+                  />
+                  <button onClick={onLogPrevDayNap}>ثبت چرت دیروز</button>
+                </div>
+              </>
+            )}
+            {gateStep === 'sleep' && (
               <>
                 <div className="empty">
                   برای دیدن لیست {jalaliLabelForDayKey(viewedDay)}، اول باید ساعت خوابِ دیشب (شب {jalaliDateOnlyLabel(prevDay)}) رو ثبت کنی.
@@ -274,7 +347,8 @@ export default function App() {
                   <button onClick={onLogSleep}>ثبت ساعت خواب</button>
                 </div>
               </>
-            ) : (
+            )}
+            {gateStep === 'wake' && (
               <>
                 <div className="empty">
                   حالا ساعت بیداری {jalaliLabelForDayKey(viewedDay)} رو ثبت کن تا لیست این روز رو ببینی.
@@ -292,32 +366,22 @@ export default function App() {
               🌙 {sleepEntry!.text} — ☀️ {wakeEntry!.text}
             </div>
 
-            <Collapsible title="خواب میان‌روزی" tag={napItems.length ? String(napItems.length) : undefined} storageKey="nap">
-              {napItems.length === 0 && <div className="empty">هنوز چرتی برای این روز ثبت نشده.</div>}
-              {napItems.map((n) => (
-                <div className="log-item" key={n.recId}>
-                  <span className="log-mark">💤</span>
-                  <span className="log-text">
-                    {n.text} — {n.durationMin} دقیقه
-                  </span>
-                  <button className="habit-del" onClick={() => onDeleteLog(n.recId)} title="حذف">
-                    ✕
-                  </button>
+            {!napResolvedViewedDay && (
+              <Collapsible title="خواب میان‌روزی" storageKey="nap">
+                <div className="add-row">
+                  <input type="time" value={napStartInput} onChange={(e) => setNapStartInput(e.target.value)} />
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="مدت (دقیقه)"
+                    style={{ maxWidth: 100 }}
+                    value={napDurationInput}
+                    onChange={(e) => setNapDurationInput(e.target.value)}
+                  />
+                  <button onClick={onAddNap}>ثبت چرت</button>
                 </div>
-              ))}
-              <div className="add-row">
-                <input type="time" value={napStartInput} onChange={(e) => setNapStartInput(e.target.value)} />
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="مدت (دقیقه)"
-                  style={{ maxWidth: 100 }}
-                  value={napDurationInput}
-                  onChange={(e) => setNapDurationInput(e.target.value)}
-                />
-                <button onClick={onAddNap}>ثبت چرت</button>
-              </div>
-            </Collapsible>
+              </Collapsible>
+            )}
 
             <div className="cat-select">
               <button
@@ -365,6 +429,47 @@ export default function App() {
                           onChange={(_jalali, newDayKey) => setEditingLogDayKey(newDayKey)}
                         />
                       </div>
+                      <div className="cat-select">
+                        <button
+                          className={'cat-btn' + (editingLogCategoryId === null ? ' active' : '')}
+                          style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                          onClick={() => {
+                            setEditingLogCategoryId(null);
+                            setEditingLogProjectId(null);
+                          }}
+                        >
+                          بدون دسته‌بندی
+                        </button>
+                        {projectCategories.map((c) => (
+                          <button
+                            key={c.id}
+                            className={'cat-btn' + (editingLogCategoryId === c.id ? ' active' : '')}
+                            onClick={() => onSelectEditCategory(c.id)}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+                      {editingLogCategoryId && (
+                        <div className="cat-select" style={{ paddingInlineStart: 12 }}>
+                          <button
+                            className={'cat-btn' + (editingLogProjectId === null ? ' active' : '')}
+                            style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                            onClick={() => setEditingLogProjectId(null)}
+                          >
+                            بدون پروژه
+                          </button>
+                          {editFormProjects.map((p) => (
+                            <button
+                              key={p.id}
+                              className={'cat-btn' + (editingLogProjectId === p.id ? ' active' : '')}
+                              onClick={() => setEditingLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="add-row">
                         <button onClick={onSaveEditLog}>ذخیره</button>
                         <button className="link-btn" onClick={onCancelEditLog}>

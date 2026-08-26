@@ -34,11 +34,15 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
             <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
               🌙 {r.sleepTime ?? '—'} — ☀️ {r.wakeTime ?? '—'} — مدت خواب شب: {formatDuration(r.nightDurationMin)}
             </div>
-            {r.naps.length > 0 && (
+            {r.naps.length > 0 ? (
               <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>
                 💤 چرت‌ها: {r.naps.map((n) => `${n.start} (${n.durationMin} دقیقه)`).join('، ')} — جمع:{' '}
                 {formatDuration(r.napTotalMin)}
               </div>
+            ) : (
+              r.napNone && (
+                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>💤 چرت نزدی</div>
+              )
             )}
           </div>
         </div>

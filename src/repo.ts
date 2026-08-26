@@ -10,7 +10,7 @@ export interface HabitCheckPayload {
   habitId: string;
   day: string;
 }
-export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake' | 'nap';
+export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake' | 'nap' | 'nap_none';
 export interface LogItemPayload {
   day: string;
   text: string;
@@ -137,14 +137,19 @@ export async function addLogItem(
   );
 }
 
-export async function editLogItem(recId: string, text: string): Promise<void> {
+export async function editLogItem(
+  recId: string,
+  text: string,
+  categoryId?: string,
+  projectId?: string,
+): Promise<void> {
   if (!text.trim()) return;
   const r = await db.records.get(recId);
   if (!r) return;
   const p = r.payload as LogItemPayload;
   await db.records.put({
     ...r,
-    payload: { ...p, text: text.trim() },
+    payload: { ...p, text: text.trim(), categoryId, projectId },
     updatedAt: new Date().toISOString(),
   });
 }
@@ -161,6 +166,14 @@ export async function addNapEntry(day: string, startTime: string, durationMin: n
       priority: false,
       durationMin,
     } as LogItemPayload),
+  );
+}
+
+// Explicit "didn't nap that day" marker — resolves the nap gate the same way
+// an actual nap entry does, without implying a nap happened.
+export async function addNapNone(day: string): Promise<void> {
+  await db.records.put(
+    makeRecord('log_item', { day, text: '', done: false, itemType: 'nap_none', priority: false } as LogItemPayload),
   );
 }
 
@@ -205,6 +218,7 @@ export interface SleepDayReport {
   nightDurationMin?: number;
   naps: { recId: string; start: string; durationMin: number }[];
   napTotalMin: number;
+  napNone: boolean;
 }
 
 export async function listSleepReports(): Promise<SleepDayReport[]> {
@@ -212,6 +226,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
   const sleeps = new Map<string, string>();
   const wakes = new Map<string, string>();
   const naps = new Map<string, { recId: string; start: string; durationMin: number }[]>();
+  const napNoneDays = new Set<string>();
 
   for (const r of recs) {
     const p = r.payload as LogItemPayload;
@@ -221,10 +236,12 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
       const arr = naps.get(p.day) ?? [];
       arr.push({ recId: r.id, start: p.text, durationMin: p.durationMin ?? 0 });
       naps.set(p.day, arr);
+    } else if (p.itemType === 'nap_none') {
+      napNoneDays.add(p.day);
     }
   }
 
-  const days = new Set<string>([...wakes.keys(), ...naps.keys()]);
+  const days = new Set<string>([...wakes.keys(), ...naps.keys(), ...napNoneDays]);
   const result: SleepDayReport[] = [];
   for (const day of days) {
     const wakeTime = wakes.get(day);
@@ -238,7 +255,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
     }
     const napList = (naps.get(day) ?? []).sort((a, b) => a.start.localeCompare(b.start));
     const napTotalMin = napList.reduce((sum, n) => sum + n.durationMin, 0);
-    result.push({ day, sleepTime, wakeTime, nightDurationMin, naps: napList, napTotalMin });
+    result.push({ day, sleepTime, wakeTime, nightDurationMin, naps: napList, napTotalMin, napNone: napNoneDays.has(day) });
   }
   return result.sort((a, b) => b.day.localeCompare(a.day));
 }
