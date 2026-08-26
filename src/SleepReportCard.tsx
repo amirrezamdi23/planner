@@ -1,15 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import Collapsible from './Collapsible';
-import { jalaliDateOnlyLabel, weekdayLabelForDayKey } from './lib/date';
+import { jalaliDateOnlyLabel } from './lib/date';
 import { listSleepReports, type SleepDayReport } from './repo';
+
+// شنبه is day 0 of the week and جمعه the last — the days between (یکشنبه..پنجشنبه)
+// are commonly shortened to "۱ شنبه".."۵ شنبه" rather than spelled out.
+const WEEKDAY_SHORT_FA = ['۱ شنبه', '۲ شنبه', '۳ شنبه', '۴ شنبه', '۵ شنبه', 'جمعه', 'شنبه']; // indexed by Date#getDay()
+
+function weekdayShortForDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return WEEKDAY_SHORT_FA[new Date(y, m - 1, d).getDay()];
+}
 
 function formatDuration(min?: number): string {
   if (min === undefined || min < 0) return '—';
   const h = Math.floor(min / 60);
   const m = min % 60;
-  if (h === 0) return `${m} دقیقه`;
-  if (m === 0) return `${h} ساعت`;
-  return `${h} ساعت و ${m} دقیقه`;
+  return `${h}:${String(m).padStart(2, '0')}`;
 }
 
 export default function SleepReportCard({ refreshSignal }: { refreshSignal: number }) {
@@ -34,15 +41,15 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
               <tr>
                 <th>روز</th>
                 <th>تاریخ</th>
-                <th>ساعت خواب</th>
-                <th>ساعت بیداری</th>
-                <th>مدت خواب</th>
+                <th title="ساعت خواب">🌙</th>
+                <th title="ساعت بیداری">☀️</th>
+                <th title="مدت خواب">🕐</th>
               </tr>
             </thead>
             <tbody>
               {reports.map((r) => (
                 <tr key={r.day}>
-                  <td>{weekdayLabelForDayKey(r.day)}</td>
+                  <td>{weekdayShortForDayKey(r.day)}</td>
                   <td>{jalaliDateOnlyLabel(r.day)}</td>
                   <td>{r.sleepTime ?? '—'}</td>
                   <td>{r.wakeTime ?? '—'}</td>
