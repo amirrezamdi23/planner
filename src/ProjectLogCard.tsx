@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { dayKey, jalaliLabelForDayKey } from './lib/date';
+import { CATEGORY_PALETTE, DEFAULT_SWATCH, type ColorSwatch } from './palette';
 import Collapsible from './Collapsible';
 import {
   listProjectCategories,
@@ -24,11 +25,52 @@ const TODAY = dayKey(0);
 const SELECTED_CATEGORY_KEY = 'selected_project_category_id';
 const SELECTED_PROJECT_KEY = 'selected_project_id';
 
+function SwatchPicker({ value, onChange }: { value: ColorSwatch; onChange: (s: ColorSwatch) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      {CATEGORY_PALETTE.map((s) => (
+        <button
+          key={s.color}
+          type="button"
+          onClick={() => onChange(s)}
+          title={s.color}
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: '50%',
+            background: s.color,
+            border: value.color === s.color ? '2px solid var(--ink)' : '2px solid transparent',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ColorDot({ color }: { color?: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-block',
+        width: 10,
+        height: 10,
+        borderRadius: '50%',
+        background: color ?? 'var(--paper-line)',
+        flex: '0 0 auto',
+      }}
+    />
+  );
+}
+
 export default function ProjectLogCard() {
   const [categories, setCategories] = useState<ProjectCategory[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
+  const [categoryColor, setCategoryColor] = useState<ColorSwatch>(DEFAULT_SWATCH);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryText, setEditingCategoryText] = useState('');
+  const [editingCategoryColor, setEditingCategoryColor] = useState<ColorSwatch>(DEFAULT_SWATCH);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     localStorage.getItem(SELECTED_CATEGORY_KEY),
   );
@@ -113,17 +155,21 @@ export default function ProjectLogCard() {
 
   async function onAddCategory() {
     if (!categoryInput.trim()) return;
-    await addProjectCategory(categoryInput);
+    await addProjectCategory(categoryInput, categoryColor.color, categoryColor.bg);
     setCategoryInput('');
+    setCategoryColor(DEFAULT_SWATCH);
     await reloadCategories();
   }
   function onStartEditCategory(c: ProjectCategory) {
     setEditingCategoryId(c.recId);
     setEditingCategoryText(c.name);
+    setEditingCategoryColor(
+      CATEGORY_PALETTE.find((s) => s.color === c.color) ?? (c.color && c.bg ? { color: c.color, bg: c.bg } : DEFAULT_SWATCH),
+    );
   }
   async function onSaveEditCategory() {
     if (!editingCategoryId) return;
-    await editProjectCategory(editingCategoryId, editingCategoryText);
+    await editProjectCategory(editingCategoryId, editingCategoryText, editingCategoryColor.color, editingCategoryColor.bg);
     setEditingCategoryId(null);
     setEditingCategoryText('');
     await reloadCategories();
@@ -175,25 +221,33 @@ export default function ProjectLogCard() {
   // ---------- step 1: category picker ----------
   if (!selectedCategory) {
     return (
-      <Collapsible title="پروژه‌ها" storageKey="projectlog">
+      <Collapsible title="دسته‌بندی" storageKey="projectlog">
         {categories.length === 0 && <div className="empty">هنوز دسته‌بندی‌ای اضافه نکردی.</div>}
         {categories.map((c) => (
           <div className="habit-row" key={c.recId}>
             {editingCategoryId === c.recId ? (
-              <div className="add-row" style={{ flex: 1, marginTop: 0 }}>
-                <input
-                  value={editingCategoryText}
-                  onChange={(e) => setEditingCategoryText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && onSaveEditCategory()}
-                  autoFocus
-                />
-                <button onClick={onSaveEditCategory}>ذخیره</button>
-                <button className="link-btn" onClick={() => setEditingCategoryId(null)}>
-                  انصراف
-                </button>
+              <div style={{ flex: 1 }}>
+                <div className="add-row" style={{ marginTop: 0 }}>
+                  <input
+                    value={editingCategoryText}
+                    onChange={(e) => setEditingCategoryText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && onSaveEditCategory()}
+                    autoFocus
+                  />
+                </div>
+                <div className="add-row">
+                  <SwatchPicker value={editingCategoryColor} onChange={setEditingCategoryColor} />
+                </div>
+                <div className="add-row">
+                  <button onClick={onSaveEditCategory}>ذخیره</button>
+                  <button className="link-btn" onClick={() => setEditingCategoryId(null)}>
+                    انصراف
+                  </button>
+                </div>
               </div>
             ) : (
               <>
+                <ColorDot color={c.color} />
                 <span className="habit-name" style={{ cursor: 'pointer' }} onClick={() => selectCategory(c.id)}>
                   {c.name}
                 </span>
@@ -214,6 +268,9 @@ export default function ProjectLogCard() {
             onChange={(e) => setCategoryInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onAddCategory()}
           />
+        </div>
+        <div className="add-row">
+          <SwatchPicker value={categoryColor} onChange={setCategoryColor} />
           <button onClick={onAddCategory}>افزودن دسته‌بندی</button>
         </div>
       </Collapsible>
@@ -223,7 +280,7 @@ export default function ProjectLogCard() {
   // ---------- step 2: project picker within category ----------
   if (!selectedProject) {
     return (
-      <Collapsible title="پروژه‌ها" tag={selectedCategory.name} storageKey="projectlog">
+      <Collapsible title="دسته‌بندی" tag={selectedCategory.name} storageKey="projectlog">
         <button className="link-btn" onClick={backToCategories}>
           ◂ بازگشت به دسته‌بندی‌ها
         </button>
@@ -247,6 +304,7 @@ export default function ProjectLogCard() {
                 </div>
               ) : (
                 <>
+                  <ColorDot color={selectedCategory.color} />
                   <span className="habit-name" style={{ cursor: 'pointer' }} onClick={() => selectProject(p.id)}>
                     {p.name}
                   </span>
@@ -291,7 +349,7 @@ export default function ProjectLogCard() {
 
   // ---------- step 3: project log ----------
   return (
-    <Collapsible title="پروژه‌ها" tag={`${selectedCategory.name} / ${selectedProject.name}`} storageKey="projectlog">
+    <Collapsible title="دسته‌بندی" tag={`${selectedCategory.name} / ${selectedProject.name}`} storageKey="projectlog">
       <button className="link-btn" onClick={backToProjects}>
         ◂ بازگشت به لیست پروژه‌ها
       </button>

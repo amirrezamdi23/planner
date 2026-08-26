@@ -469,32 +469,39 @@ export async function deletePayment(recId: string): Promise<void> {
 // subgroup — mirrors how the user actually thinks about their work areas.
 export interface ProjectCategoryPayload {
   name: string;
+  color?: string;
+  bg?: string;
 }
 export interface ProjectCategory {
   recId: string;
   id: string;
   name: string;
+  color?: string;
+  bg?: string;
 }
 
 export async function listProjectCategories(): Promise<ProjectCategory[]> {
   const recs = await liveByType('project_category');
   return recs
-    .map((r) => ({ recId: r.id, id: r.id, name: (r.payload as ProjectCategoryPayload).name }))
+    .map((r) => {
+      const p = r.payload as ProjectCategoryPayload;
+      return { recId: r.id, id: r.id, name: p.name, color: p.color, bg: p.bg };
+    })
     .sort((a, b) => a.recId.localeCompare(b.recId));
 }
 
-export async function addProjectCategory(name: string): Promise<void> {
+export async function addProjectCategory(name: string, color?: string, bg?: string): Promise<void> {
   if (!name.trim()) return;
-  await db.records.put(makeRecord('project_category', { name: name.trim() } as ProjectCategoryPayload));
+  await db.records.put(makeRecord('project_category', { name: name.trim(), color, bg } as ProjectCategoryPayload));
 }
 
-export async function editProjectCategory(recId: string, name: string): Promise<void> {
+export async function editProjectCategory(recId: string, name: string, color?: string, bg?: string): Promise<void> {
   if (!name.trim()) return;
   const r = await db.records.get(recId);
   if (!r) return;
   await db.records.put({
     ...r,
-    payload: { name: name.trim() } as ProjectCategoryPayload,
+    payload: { name: name.trim(), color, bg } as ProjectCategoryPayload,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -608,7 +615,7 @@ export async function ensureOtherCategoryAndMigrateLegacyProjects(): Promise<voi
   let categories = await listProjectCategories();
   let other = categories.find((c) => c.name === OTHER_NAME);
   if (!other) {
-    await addProjectCategory(OTHER_NAME);
+    await addProjectCategory(OTHER_NAME, '#5B5648', '#EAE6D9'); // neutral — matches --ink-soft / --paper
     categories = await listProjectCategories();
     other = categories.find((c) => c.name === OTHER_NAME);
   }

@@ -93,6 +93,7 @@ export default function App() {
   const [addFormProjects, setAddFormProjects] = useState<Project[]>([]);
   const [editFormProjects, setEditFormProjects] = useState<Project[]>([]);
   const [pendingWithDueDate, setPendingWithDueDate] = useState<LogItem[]>([]);
+  const [expandedNotesIds, setExpandedNotesIds] = useState<Set<string>>(new Set());
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
@@ -145,9 +146,9 @@ export default function App() {
     listProjects(editingLogCategoryId).then(setEditFormProjects);
   }, [editingLogCategoryId]);
 
-  function categoryName(id?: string): string | null {
+  function categoryOf(id?: string): ProjectCategory | null {
     if (!id) return null;
-    return projectCategories.find((c) => c.id === id)?.name ?? null;
+    return projectCategories.find((c) => c.id === id) ?? null;
   }
   function projectName(id?: string): string | null {
     if (!id) return null;
@@ -157,6 +158,14 @@ export default function App() {
   function onSelectLogCategory(catId: string) {
     setLogCategoryId((cur) => (cur === catId ? null : catId));
     setLogProjectId(null);
+  }
+  function toggleNotesExpanded(recId: string) {
+    setExpandedNotesIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(recId)) next.delete(recId);
+      else next.add(recId);
+      return next;
+    });
   }
   function onSelectEditCategory(catId: string) {
     setEditingLogCategoryId((cur) => (cur === catId ? null : catId));
@@ -448,6 +457,7 @@ export default function App() {
                 <button
                   key={c.id}
                   className={'cat-btn' + (categoryFilter === c.id ? ' active' : '')}
+                  style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
                   onClick={() => setCategoryFilter((f) => (f === c.id ? null : c.id))}
                 >
                   {c.name}
@@ -461,7 +471,8 @@ export default function App() {
             {[...reminderItems, ...visibleLogItems].map((it) => {
               const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
               const canToggle = it.itemType === 'task';
-              const catName = categoryName(it.categoryId);
+              const catObj = categoryOf(it.categoryId);
+              const catName = catObj?.name ?? null;
               const projName = projectName(it.projectId);
               const isEditing = editingLogId === it.recId;
               const dueStatus = dueStatusFor(it);
@@ -514,6 +525,7 @@ export default function App() {
                           <button
                             key={c.id}
                             className={'cat-btn' + (editingLogCategoryId === c.id ? ' active' : '')}
+                            style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
                             onClick={() => onSelectEditCategory(c.id)}
                           >
                             {c.name}
@@ -606,7 +618,10 @@ export default function App() {
                       {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
                       {it.text}
                       {catName && (
-                        <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
+                        <span
+                          className="pill"
+                          style={{ background: catObj?.bg ?? 'var(--paper)', color: catObj?.color ?? 'var(--ink-soft)', marginInlineStart: 6 }}
+                        >
                           {catName}
                           {projName ? ` › ${projName}` : ''}
                         </span>
@@ -619,8 +634,17 @@ export default function App() {
                         </span>
                       )}
                     </span>
-                    {it.notes && <div className="pay-sub">{it.notes}</div>}
+                    {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
                   </div>
+                  {it.notes && (
+                    <button
+                      className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
+                      onClick={() => toggleNotesExpanded(it.recId)}
+                      title="نمایش/پنهان‌کردن توضیحات"
+                    >
+                      ▾
+                    </button>
+                  )}
                   <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
                     ✎
                   </button>
@@ -670,6 +694,7 @@ export default function App() {
                 <button
                   key={c.id}
                   className={'cat-btn' + (logCategoryId === c.id ? ' active' : '')}
+                  style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
                   onClick={() => onSelectLogCategory(c.id)}
                 >
                   {c.name}
