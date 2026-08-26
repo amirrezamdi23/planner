@@ -68,6 +68,11 @@ export function todayWeekdayLabel(): string {
   return WEEKDAY_NAMES_FA[new Date().getDay()];
 }
 
+export function weekdayLabelForDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  return WEEKDAY_NAMES_FA[new Date(y, m - 1, d).getDay()];
+}
+
 export function jalaliLabelForDayKey(key: string): string {
   const [y, m, d] = key.split('-').map(Number);
   const date = new Date(y, m - 1, d);

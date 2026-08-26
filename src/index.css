@@ -491,6 +491,30 @@ textarea.review {
   margin-top: 20px;
 }
 
+.sleep-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.sleep-table th,
+.sleep-table td {
+  padding: 7px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+.sleep-table thead th {
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 11px;
+  border-bottom: 1px solid var(--paper-line);
+}
+.sleep-table tbody tr:not(:last-child) td {
+  border-bottom: 1px dashed var(--paper-line);
+}
+.sleep-table tbody td:first-child {
+  color: var(--ink-soft);
+}
+
 /* Comfortable tap targets + spacing on small phones */
 @media (max-width: 400px) {
   .wrap {

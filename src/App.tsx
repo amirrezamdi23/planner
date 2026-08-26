@@ -71,6 +71,7 @@ export default function App() {
 
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingLogText, setEditingLogText] = useState('');
+  const [editingLogType, setEditingLogType] = useState<LogItemType>('task');
   const [editingLogDayKey, setEditingLogDayKey] = useState(TODAY);
   const [editingLogCategoryId, setEditingLogCategoryId] = useState<string | null>(null);
   const [editingLogProjectId, setEditingLogProjectId] = useState<string | null>(null);
@@ -171,6 +172,7 @@ export default function App() {
   function onStartEditLog(it: LogItem) {
     setEditingLogId(it.recId);
     setEditingLogText(it.text);
+    setEditingLogType(it.itemType);
     setEditingLogDayKey(it.day);
     setEditingLogCategoryId(it.categoryId ?? null);
     setEditingLogProjectId(it.projectId ?? null);
@@ -181,6 +183,7 @@ export default function App() {
     await editLogItem(
       editingLogId,
       editingLogText,
+      editingLogType,
       editingLogCategoryId ?? undefined,
       editingLogProjectId ?? undefined,
     );
@@ -422,6 +425,17 @@ export default function App() {
                           autoFocus
                         />
                       </div>
+                      <div className="type-select">
+                        {LOG_TYPES.map((lt) => (
+                          <button
+                            key={lt.id}
+                            className={'type-btn' + (editingLogType === lt.id ? ' active' : '')}
+                            onClick={() => setEditingLogType(lt.id)}
+                          >
+                            {lt.mark} {lt.label}
+                          </button>
+                        ))}
+                      </div>
                       <div className="add-row">
                         <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>انتقال به تاریخ:</span>
                         <JalaliDateInput
@@ -450,7 +464,7 @@ export default function App() {
                           </button>
                         ))}
                       </div>
-                      {editingLogCategoryId && (
+                      {editingLogCategoryId && editFormProjects.length > 0 && (
                         <div className="cat-select" style={{ paddingInlineStart: 12 }}>
                           <button
                             className={'cat-btn' + (editingLogProjectId === null ? ' active' : '')}
@@ -560,7 +574,7 @@ export default function App() {
               ))}
             </div>
 
-            {logCategoryId && (
+            {logCategoryId && addFormProjects.length > 0 && (
               <div className="cat-select" style={{ paddingInlineStart: 12 }}>
                 <button
                   className={'cat-btn' + (logProjectId === null ? ' active' : '')}

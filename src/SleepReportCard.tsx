@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import Collapsible from './Collapsible';
-import { jalaliLabelForDayKey } from './lib/date';
+import { jalaliDateOnlyLabel, weekdayLabelForDayKey } from './lib/date';
 import { listSleepReports, type SleepDayReport } from './repo';
 
 function formatDuration(min?: number): string {
@@ -25,28 +25,34 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
 
   return (
     <Collapsible title="گزارش خواب" storageKey="sleepreport">
-      {reports.length === 0 && <div className="empty">هنوز داده‌ی خوابی ثبت نشده.</div>}
-      {reports.map((r) => (
-        <div className="log-item" key={r.day}>
-          <span className="log-mark">–</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{jalaliLabelForDayKey(r.day)}</div>
-            <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>
-              🌙 {r.sleepTime ?? '—'} — ☀️ {r.wakeTime ?? '—'} — مدت خواب شب: {formatDuration(r.nightDurationMin)}
-            </div>
-            {r.naps.length > 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>
-                💤 چرت‌ها: {r.naps.map((n) => `${n.start} (${n.durationMin} دقیقه)`).join('، ')} — جمع:{' '}
-                {formatDuration(r.napTotalMin)}
-              </div>
-            ) : (
-              r.napNone && (
-                <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>💤 چرت نزدی</div>
-              )
-            )}
-          </div>
+      {reports.length === 0 ? (
+        <div className="empty">هنوز داده‌ی خوابی ثبت نشده.</div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="sleep-table">
+            <thead>
+              <tr>
+                <th>روز</th>
+                <th>تاریخ</th>
+                <th>ساعت خواب</th>
+                <th>ساعت بیداری</th>
+                <th>مدت خواب</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.day}>
+                  <td>{weekdayLabelForDayKey(r.day)}</td>
+                  <td>{jalaliDateOnlyLabel(r.day)}</td>
+                  <td>{r.sleepTime ?? '—'}</td>
+                  <td>{r.wakeTime ?? '—'}</td>
+                  <td>{r.napNone && r.totalSleepMin === undefined ? 'چرت نزدی' : formatDuration(r.totalSleepMin)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
+      )}
     </Collapsible>
   );
 }
