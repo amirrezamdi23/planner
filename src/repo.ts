@@ -207,6 +207,33 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
     });
 }
 
+// All user-authored notes/tasks/events/ideas across every day — the
+// bookkeeping types (sleep/wake/nap/nap_none) are excluded since they're not
+// something the user would browse as "history".
+export async function listAllLogItems(): Promise<LogItem[]> {
+  const recs = await liveByType('log_item');
+  const NOTE_TYPES: LogItemType[] = ['task', 'event', 'note', 'idea'];
+  return recs
+    .filter((r) => NOTE_TYPES.includes((r.payload as LogItemPayload).itemType))
+    .sort((a, b) => b.id.localeCompare(a.id))
+    .map((r) => {
+      const p = r.payload as LogItemPayload;
+      return {
+        recId: r.id,
+        day: p.day,
+        text: p.text,
+        done: p.done,
+        itemType: p.itemType,
+        priority: p.priority,
+        categoryId: p.categoryId,
+        projectId: p.projectId,
+        durationMin: p.durationMin,
+        notes: p.notes,
+        dueDate: p.dueDate,
+      };
+    });
+}
+
 // Midday naps: same time-log idea as sleep/wake, but with a duration too.
 export async function addNapEntry(day: string, startTime: string, durationMin: number): Promise<void> {
   if (!startTime || durationMin <= 0) return;

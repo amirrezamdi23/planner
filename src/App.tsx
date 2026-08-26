@@ -15,6 +15,7 @@ import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import TimerCard from './TimerCard';
 import SleepReportCard from './SleepReportCard';
+import HistoryCard from './HistoryCard';
 import Collapsible from './Collapsible';
 import JalaliDateInput from './JalaliDateInput';
 import {
@@ -68,7 +69,6 @@ export default function App() {
   const [logHasDueDate, setLogHasDueDate] = useState(false);
   const [logDueDateJalali, setLogDueDateJalali] = useState<[number, number, number]>(todayJalali());
   const [logDueDateKey, setLogDueDateKey] = useState(TODAY);
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [sleepTimeInput, setSleepTimeInput] = useState('');
   const [wakeTimeInput, setWakeTimeInput] = useState('');
   const [napStartInput, setNapStartInput] = useState('');
@@ -327,10 +327,6 @@ export default function App() {
   const taskLogItems = logItems.filter(
     (it) => it.itemType !== 'sleep' && it.itemType !== 'wake' && it.itemType !== 'nap' && it.itemType !== 'nap_none',
   );
-  const visibleLogItems = categoryFilter
-    ? taskLogItems.filter((it) => it.categoryId === categoryFilter)
-    : taskLogItems;
-
   // A due-dated item starts surfacing as a reminder 10 days out (yellow),
   // turns urgent inside the last 3 days (red), and once its due date has
   // fully passed it keeps reappearing — pinned, still red — on every day
@@ -445,30 +441,10 @@ export default function App() {
               </Collapsible>
             )}
 
-            <div className="cat-select">
-              <button
-                className={'cat-btn' + (categoryFilter === null ? ' active' : '')}
-                style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                onClick={() => setCategoryFilter(null)}
-              >
-                همه
-              </button>
-              {projectCategories.map((c) => (
-                <button
-                  key={c.id}
-                  className={'cat-btn' + (categoryFilter === c.id ? ' active' : '')}
-                  style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
-                  onClick={() => setCategoryFilter((f) => (f === c.id ? null : c.id))}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-
-            {reminderItems.length === 0 && visibleLogItems.length === 0 && (
+            {reminderItems.length === 0 && taskLogItems.length === 0 && (
               <div className="empty">چیزی ثبت نشده.</div>
             )}
-            {[...reminderItems, ...visibleLogItems].map((it) => {
+            {[...reminderItems, ...taskLogItems].map((it) => {
               const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
               const canToggle = it.itemType === 'task';
               const catObj = categoryOf(it.categoryId);
@@ -782,6 +758,8 @@ export default function App() {
           </>
         )}
       </Collapsible>
+
+      <HistoryCard />
 
       <Collapsible title="مرور روزانه" storageKey="dailyreview">
         <div className="day-nav">
