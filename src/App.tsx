@@ -8,6 +8,7 @@ import {
   jalaliDateOnlyLabel,
   jalaliTupleForDayKey,
   daysBetweenDayKeys,
+  todayJalali,
 } from './lib/date';
 import SyncCard from './SyncCard';
 import PaymentsCard from './PaymentsCard';
@@ -25,6 +26,7 @@ import {
   moveLogItem,
   addNapEntry,
   addNapNone,
+  listPendingWithDueDate,
   listProjectCategories,
   listProjects,
   listDailyReviewEntries,
@@ -61,6 +63,11 @@ export default function App() {
   const [logPriority, setLogPriority] = useState(false);
   const [logCategoryId, setLogCategoryId] = useState<string | null>(null);
   const [logProjectId, setLogProjectId] = useState<string | null>(null);
+  const [logHasNotes, setLogHasNotes] = useState(false);
+  const [logNotesInput, setLogNotesInput] = useState('');
+  const [logHasDueDate, setLogHasDueDate] = useState(false);
+  const [logDueDateJalali, setLogDueDateJalali] = useState<[number, number, number]>(todayJalali());
+  const [logDueDateKey, setLogDueDateKey] = useState(TODAY);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [sleepTimeInput, setSleepTimeInput] = useState('');
   const [wakeTimeInput, setWakeTimeInput] = useState('');
@@ -75,11 +82,17 @@ export default function App() {
   const [editingLogDayKey, setEditingLogDayKey] = useState(TODAY);
   const [editingLogCategoryId, setEditingLogCategoryId] = useState<string | null>(null);
   const [editingLogProjectId, setEditingLogProjectId] = useState<string | null>(null);
+  const [editingLogHasNotes, setEditingLogHasNotes] = useState(false);
+  const [editingLogNotesInput, setEditingLogNotesInput] = useState('');
+  const [editingLogHasDueDate, setEditingLogHasDueDate] = useState(false);
+  const [editingLogDueDateJalali, setEditingLogDueDateJalali] = useState<[number, number, number]>(todayJalali());
+  const [editingLogDueDateKey, setEditingLogDueDateKey] = useState(TODAY);
 
   const [projectCategories, setProjectCategories] = useState<ProjectCategory[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [addFormProjects, setAddFormProjects] = useState<Project[]>([]);
   const [editFormProjects, setEditFormProjects] = useState<Project[]>([]);
+  const [pendingWithDueDate, setPendingWithDueDate] = useState<LogItem[]>([]);
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
@@ -94,14 +107,16 @@ export default function App() {
   const prevDay = shiftDayKey(viewedDay, -1);
 
   const reload = useCallback(async () => {
-    const [l, pl, r] = await Promise.all([
+    const [l, pl, r, pending] = await Promise.all([
       listLogItems(viewedDay),
       listLogItems(prevDay),
       listDailyReviewEntries(),
+      listPendingWithDueDate(),
     ]);
     setLogItems(l);
     setPrevDayLogItems(pl);
     setReviewEntries(r);
+    setPendingWithDueDate(pending);
   }, [viewedDay, prevDay]);
 
   useEffect(() => {
@@ -150,9 +165,23 @@ export default function App() {
 
   async function onAddLog() {
     if (!logInput.trim()) return;
-    await addLogItem(viewedDay, logInput, logType, logPriority, logCategoryId ?? undefined, logProjectId ?? undefined);
+    await addLogItem({
+      day: viewedDay,
+      text: logInput,
+      itemType: logType,
+      priority: logPriority,
+      categoryId: logCategoryId ?? undefined,
+      projectId: logProjectId ?? undefined,
+      notes: logHasNotes ? logNotesInput.trim() || undefined : undefined,
+      dueDate: logHasDueDate ? logDueDateKey : undefined,
+    });
     setLogInput('');
     setLogPriority(false);
+    setLogHasNotes(false);
+    setLogNotesInput('');
+    setLogHasDueDate(false);
+    setLogDueDateJalali(todayJalali());
+    setLogDueDateKey(TODAY);
     await reload();
   }
   async function onToggleLog(recId: string) {
@@ -176,17 +205,25 @@ export default function App() {
     setEditingLogDayKey(it.day);
     setEditingLogCategoryId(it.categoryId ?? null);
     setEditingLogProjectId(it.projectId ?? null);
+    setEditingLogHasNotes(!!it.notes);
+    setEditingLogNotesInput(it.notes ?? '');
+    setEditingLogHasDueDate(!!it.dueDate);
+    setEditingLogDueDateJalali(it.dueDate ? jalaliTupleForDayKey(it.dueDate) : todayJalali());
+    setEditingLogDueDateKey(it.dueDate ?? TODAY);
   }
   async function onSaveEditLog() {
     if (!editingLogId) return;
-    const original = logItems.find((it) => it.recId === editingLogId);
-    await editLogItem(
-      editingLogId,
-      editingLogText,
-      editingLogType,
-      editingLogCategoryId ?? undefined,
-      editingLogProjectId ?? undefined,
-    );
+    const allKnown = [...logItems, ...prevDayLogItems, ...pendingWithDueDate];
+    const original = allKnown.find((it) => it.recId === editingLogId);
+    await editLogItem({
+      recId: editingLogId,
+      text: editingLogText,
+      itemType: editingLogType,
+      categoryId: editingLogCategoryId ?? undefined,
+      projectId: editingLogProjectId ?? undefined,
+      notes: editingLogHasNotes ? editingLogNotesInput.trim() || undefined : undefined,
+      dueDate: editingLogHasDueDate ? editingLogDueDateKey : undefined,
+    });
     if (original && original.day !== editingLogDayKey) {
       await moveLogItem(editingLogId, editingLogDayKey);
     }
@@ -214,14 +251,14 @@ export default function App() {
 
   async function onLogSleep() {
     if (!sleepTimeInput) return;
-    await addLogItem(prevDay, sleepTimeInput, 'sleep', false);
+    await addLogItem({ day: prevDay, text: sleepTimeInput, itemType: 'sleep', priority: false });
     setSleepTimeInput('');
     await reload();
     setSleepDataVersion((v) => v + 1);
   }
   async function onLogWake() {
     if (!wakeTimeInput) return;
-    await addLogItem(viewedDay, wakeTimeInput, 'wake', false);
+    await addLogItem({ day: viewedDay, text: wakeTimeInput, itemType: 'wake', priority: false });
     setWakeTimeInput('');
     await reload();
     setSleepDataVersion((v) => v + 1);
@@ -284,6 +321,19 @@ export default function App() {
   const visibleLogItems = categoryFilter
     ? taskLogItems.filter((it) => it.categoryId === categoryFilter)
     : taskLogItems;
+
+  // A due-dated item starts surfacing as a reminder 10 days out (yellow),
+  // turns urgent inside the last 3 days (red), and once its due date has
+  // fully passed it keeps reappearing — pinned, still red — on every day
+  // after, until it's checked off.
+  function dueStatusFor(it: LogItem): 'yellow' | 'red' | null {
+    if (!it.dueDate || it.done) return null;
+    const daysUntil = daysBetweenDayKeys(viewedDay, it.dueDate);
+    if (daysUntil <= 3) return 'red';
+    if (daysUntil <= 10) return 'yellow';
+    return null;
+  }
+  const reminderItems = pendingWithDueDate.filter((it) => it.day !== viewedDay && dueStatusFor(it) !== null);
 
   return (
     <div className="wrap">
@@ -405,13 +455,19 @@ export default function App() {
               ))}
             </div>
 
-            {visibleLogItems.length === 0 && <div className="empty">چیزی ثبت نشده.</div>}
-            {visibleLogItems.map((it) => {
+            {reminderItems.length === 0 && visibleLogItems.length === 0 && (
+              <div className="empty">چیزی ثبت نشده.</div>
+            )}
+            {[...reminderItems, ...visibleLogItems].map((it) => {
               const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
               const canToggle = it.itemType === 'task';
               const catName = categoryName(it.categoryId);
               const projName = projectName(it.projectId);
               const isEditing = editingLogId === it.recId;
+              const dueStatus = dueStatusFor(it);
+              const dueDaysLeft = it.dueDate ? daysBetweenDayKeys(viewedDay, it.dueDate) : null;
+              const rowClass =
+                'log-item' + (dueStatus === 'red' ? ' due-urgent' : dueStatus === 'yellow' ? ' due-soon' : '');
 
               if (isEditing) {
                 return (
@@ -484,6 +540,43 @@ export default function App() {
                           ))}
                         </div>
                       )}
+                      <div className="type-select">
+                        <button
+                          className={'type-btn' + (editingLogHasNotes ? ' active' : '')}
+                          onClick={() => setEditingLogHasNotes((v) => !v)}
+                        >
+                          📝 توضیحات
+                        </button>
+                        <button
+                          className={'type-btn' + (editingLogHasDueDate ? ' active' : '')}
+                          onClick={() => setEditingLogHasDueDate((v) => !v)}
+                        >
+                          📅 سررسید
+                        </button>
+                      </div>
+                      {editingLogHasNotes && (
+                        <div className="add-row">
+                          <textarea
+                            className="review"
+                            style={{ minHeight: 50 }}
+                            placeholder="توضیحات تکمیلی…"
+                            value={editingLogNotesInput}
+                            onChange={(e) => setEditingLogNotesInput(e.target.value)}
+                          />
+                        </div>
+                      )}
+                      {editingLogHasDueDate && (
+                        <div className="add-row">
+                          <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>سررسید:</span>
+                          <JalaliDateInput
+                            value={editingLogDueDateJalali}
+                            onChange={(jalali, dk) => {
+                              setEditingLogDueDateJalali(jalali);
+                              setEditingLogDueDateKey(dk);
+                            }}
+                          />
+                        </div>
+                      )}
                       <div className="add-row">
                         <button onClick={onSaveEditLog}>ذخیره</button>
                         <button className="link-btn" onClick={onCancelEditLog}>
@@ -496,7 +589,7 @@ export default function App() {
               }
 
               return (
-                <div className="log-item" key={it.recId}>
+                <div className={rowClass} key={it.recId}>
                   {canToggle ? (
                     <button
                       className={'log-check' + (it.done ? ' done' : '')}
@@ -508,20 +601,30 @@ export default function App() {
                   ) : (
                     <span className="log-mark">{t.mark}</span>
                   )}
-                  <span className={'log-text' + (it.done ? ' done' : '')}>
-                    {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
-                    {it.text}
-                    {catName && (
-                      <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
-                        {catName}
-                        {projName ? ` › ${projName}` : ''}
-                      </span>
-                    )}
-                  </span>
+                  <div style={{ flex: 1 }}>
+                    <span className={'log-text' + (it.done ? ' done' : '')}>
+                      {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
+                      {it.text}
+                      {catName && (
+                        <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
+                          {catName}
+                          {projName ? ` › ${projName}` : ''}
+                        </span>
+                      )}
+                      {it.dueDate && (
+                        <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
+                          📅 {jalaliDateOnlyLabel(it.dueDate)}
+                          {dueDaysLeft !== null &&
+                            (dueDaysLeft < 0 ? ` — ${Math.abs(dueDaysLeft)} روز گذشته` : ` — ${dueDaysLeft} روز مانده`)}
+                        </span>
+                      )}
+                    </span>
+                    {it.notes && <div className="pay-sub">{it.notes}</div>}
+                  </div>
                   <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
                     ✎
                   </button>
-                  {viewedDay !== TODAY && !it.done && (
+                  {it.day !== TODAY && !it.done && (
                     <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="انتقال به امروز">
                       ⇥
                     </button>
@@ -592,6 +695,45 @@ export default function App() {
                     {p.name}
                   </button>
                 ))}
+              </div>
+            )}
+
+            <div className="type-select">
+              <button
+                className={'type-btn' + (logHasNotes ? ' active' : '')}
+                onClick={() => setLogHasNotes((v) => !v)}
+                title="یه کادر توضیحات جداگانه باز می‌شه تا عنوان کوتاه بمونه"
+              >
+                📝 توضیحات
+              </button>
+              <button
+                className={'type-btn' + (logHasDueDate ? ' active' : '')}
+                onClick={() => setLogHasDueDate((v) => !v)}
+              >
+                📅 سررسید
+              </button>
+            </div>
+            {logHasNotes && (
+              <div className="add-row">
+                <textarea
+                  className="review"
+                  style={{ minHeight: 50 }}
+                  placeholder="توضیحات تکمیلی…"
+                  value={logNotesInput}
+                  onChange={(e) => setLogNotesInput(e.target.value)}
+                />
+              </div>
+            )}
+            {logHasDueDate && (
+              <div className="add-row">
+                <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>سررسید:</span>
+                <JalaliDateInput
+                  value={logDueDateJalali}
+                  onChange={(jalali, dk) => {
+                    setLogDueDateJalali(jalali);
+                    setLogDueDateKey(dk);
+                  }}
+                />
               </div>
             )}
 

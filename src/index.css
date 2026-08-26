@@ -158,6 +158,20 @@ header {
 .log-item:last-child {
   border-bottom: none;
 }
+.log-item.due-soon {
+  background: #f1e5c9;
+  border-radius: 8px;
+}
+.log-item.due-urgent {
+  background: var(--rust);
+  color: #fff;
+  border-radius: 8px;
+}
+.log-item.due-urgent .log-text,
+.log-item.due-urgent .pay-sub,
+.log-item.due-urgent .log-mark {
+  color: #fff;
+}
 .log-mark {
   font-family: 'JetBrains Mono', monospace;
   font-size: 16px;

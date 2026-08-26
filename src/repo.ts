@@ -20,6 +20,8 @@ export interface LogItemPayload {
   categoryId?: string;
   projectId?: string;
   durationMin?: number; // only used by 'nap'
+  notes?: string;
+  dueDate?: string; // day-key
 }
 export interface DailyReviewPayload {
   day: string;
@@ -42,6 +44,8 @@ export interface LogItem {
   categoryId?: string;
   projectId?: string;
   durationMin?: number;
+  notes?: string;
+  dueDate?: string;
 }
 
 async function liveByType(type: Rec['type']): Promise<Rec[]> {
@@ -111,48 +115,96 @@ export async function listLogItems(day: string): Promise<LogItem[]> {
         categoryId: p.categoryId,
         projectId: p.projectId,
         durationMin: p.durationMin,
+        notes: p.notes,
+        dueDate: p.dueDate,
       };
     });
 }
 
-export async function addLogItem(
-  day: string,
-  text: string,
-  itemType: LogItemType,
-  priority: boolean,
-  categoryId?: string,
-  projectId?: string,
-): Promise<void> {
-  if (!text.trim()) return;
+export interface AddLogItemInput {
+  day: string;
+  text: string;
+  itemType: LogItemType;
+  priority: boolean;
+  categoryId?: string;
+  projectId?: string;
+  notes?: string;
+  dueDate?: string;
+}
+
+export async function addLogItem(input: AddLogItemInput): Promise<void> {
+  if (!input.text.trim()) return;
   await db.records.put(
     makeRecord('log_item', {
-      day,
-      text: text.trim(),
+      day: input.day,
+      text: input.text.trim(),
       done: false,
-      itemType,
-      priority,
-      categoryId,
-      projectId,
+      itemType: input.itemType,
+      priority: input.priority,
+      categoryId: input.categoryId,
+      projectId: input.projectId,
+      notes: input.notes,
+      dueDate: input.dueDate,
     } as LogItemPayload),
   );
 }
 
-export async function editLogItem(
-  recId: string,
-  text: string,
-  itemType: LogItemType,
-  categoryId?: string,
-  projectId?: string,
-): Promise<void> {
-  if (!text.trim()) return;
-  const r = await db.records.get(recId);
+export interface EditLogItemInput {
+  recId: string;
+  text: string;
+  itemType: LogItemType;
+  categoryId?: string;
+  projectId?: string;
+  notes?: string;
+  dueDate?: string;
+}
+
+export async function editLogItem(input: EditLogItemInput): Promise<void> {
+  if (!input.text.trim()) return;
+  const r = await db.records.get(input.recId);
   if (!r) return;
   const p = r.payload as LogItemPayload;
   await db.records.put({
     ...r,
-    payload: { ...p, text: text.trim(), itemType, categoryId, projectId },
+    payload: {
+      ...p,
+      text: input.text.trim(),
+      itemType: input.itemType,
+      categoryId: input.categoryId,
+      projectId: input.projectId,
+      notes: input.notes,
+      dueDate: input.dueDate,
+    },
     updatedAt: new Date().toISOString(),
   });
+}
+
+// Not-done items with a due date, from any day — used to surface reminders
+// on today's list well before (and after) the deadline, regardless of which
+// day the item actually lives on.
+export async function listPendingWithDueDate(): Promise<LogItem[]> {
+  const recs = await liveByType('log_item');
+  return recs
+    .filter((r) => {
+      const p = r.payload as LogItemPayload;
+      return !p.done && !!p.dueDate;
+    })
+    .map((r) => {
+      const p = r.payload as LogItemPayload;
+      return {
+        recId: r.id,
+        day: p.day,
+        text: p.text,
+        done: p.done,
+        itemType: p.itemType,
+        priority: p.priority,
+        categoryId: p.categoryId,
+        projectId: p.projectId,
+        durationMin: p.durationMin,
+        notes: p.notes,
+        dueDate: p.dueDate,
+      };
+    });
 }
 
 // Midday naps: same time-log idea as sleep/wake, but with a duration too.
