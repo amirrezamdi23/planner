@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import Collapsible from './Collapsible';
 import { getTimerSound, setTimerSound, clearTimerSound } from './db';
+import { scheduleAlarm, cancelAlarm, TIMER_ALARM_IDS } from './lib/alarm';
 
 const STAGE_COUNT = 3;
 
@@ -119,9 +120,22 @@ export default function TimerCard() {
 
   function startStage(idx: number) {
     const minutes = Math.max(1, parseInt(durationsMin[idx], 10) || 1);
+    const endsAt = Date.now() + minutes * 60000;
     setStageIndex(idx);
-    setEndAt(Date.now() + minutes * 60000);
+    setEndAt(endsAt);
     setRemainingMs(minutes * 60000);
+    // Hand this stage to the OS as well, so it still rings if the app gets
+    // backgrounded. Inert on the web; see lib/alarm.ts.
+    scheduleAlarm({
+      id: TIMER_ALARM_IDS[idx],
+      at: new Date(endsAt),
+      title: 'تایمر',
+      body: `مرحله ${idx + 1} از ${STAGE_COUNT} تموم شد`,
+    });
+  }
+
+  function cancelAllAlarms() {
+    for (const id of TIMER_ALARM_IDS) cancelAlarm(id);
   }
 
   function onStart() {
@@ -140,6 +154,7 @@ export default function TimerCard() {
   function onDismissRing() {
     stopRinging();
     setRinging(false);
+    cancelAlarm(TIMER_ALARM_IDS[stageIndex]);
     if (stageIndex < STAGE_COUNT - 1) {
       startStage(stageIndex + 1);
     } else {
@@ -151,6 +166,7 @@ export default function TimerCard() {
   function onCancel() {
     stopRinging();
     setRinging(false);
+    cancelAllAlarms();
     setStageIndex(-1);
     setEndAt(null);
   }
