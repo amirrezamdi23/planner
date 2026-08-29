@@ -23,6 +23,7 @@ import BackupCard from './BackupCard';
 import BottomNav, { type NavTab } from './BottomNav';
 import DailyReviewCard from './DailyReviewCard';
 import HabitsCard from './HabitsCard';
+import HabitStrip from './HabitStrip';
 import UpcomingCard from './UpcomingCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
@@ -583,6 +584,8 @@ export default function App() {
           {todayWeekdayLabel()} — {todayJalaliLabel()}
         </div>
       </header>
+
+      <HabitStrip />
 
       <div id="section-today" />
       <Collapsible title="یادداشت سریع" storageKey="quicklog">

@@ -282,6 +282,62 @@ header {
   color: var(--rust);
 }
 
+/* ---- Habit strip: today's habits, one line, on the home page ---- */
+.habit-strip {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 16px;
+  scrollbar-width: none;
+}
+.habit-strip::-webkit-scrollbar {
+  display: none;
+}
+.habit-strip-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  max-width: 68px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+.habit-strip-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--paper-line);
+  background: var(--card);
+  font-size: 18px;
+  line-height: 1;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.habit-strip-item.on .habit-strip-dot {
+  border-style: solid;
+  border-color: var(--teal);
+  background: var(--teal);
+}
+.habit-strip-name {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.habit-strip-item.on .habit-strip-name {
+  color: var(--teal);
+  font-weight: 600;
+}
+
 /* ---- Habits: one row per habit, one dot per day ---- */
 .habit-today-count {
   font-size: 12px;
