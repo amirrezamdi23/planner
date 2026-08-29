@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { notifyCardOpened, onCardOpened } from './collapsibleGroup';
 
 const LOCK_HOLD_MS = 800;
+
+// A card shown on its own page has no siblings to collapse against, and its
+// title already sits in the page header — so the whole collapse affordance is
+// dropped there. Provided as context so every card component gets this for
+// free without each one growing a prop.
+export const BareCardContext = createContext(false);
 
 export default function Collapsible({
   title,
@@ -15,6 +21,7 @@ export default function Collapsible({
   storageKey: string;
   children: ReactNode;
 }) {
+  const bare = useContext(BareCardContext);
   const key = 'collapsed_' + storageKey;
   const lockKey = 'locked_' + storageKey;
   const [open, setOpen] = useState(() => localStorage.getItem(key) !== '1');
@@ -75,6 +82,15 @@ export default function Collapsible({
     } else {
       openAndBroadcast();
     }
+  }
+
+  if (bare) {
+    return (
+      <div className="card">
+        {tag && <div className="card-bare-tag">{tag}</div>}
+        <div className="card-body">{children}</div>
+      </div>
+    );
   }
 
   return (

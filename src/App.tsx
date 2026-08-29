@@ -1,5 +1,9 @@
-import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check, Minus, MessageSquare, ListPlus } from 'lucide-react';
+import { Fragment, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
+import {
+  ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check,
+  Minus, MessageSquare, ListPlus, ArrowRight, History, NotebookPen, Timer, AlarmClock, Music, Wallet,
+  FolderKanban, RefreshCw, Database, type LucideIcon,
+} from 'lucide-react';
 import { LOG_TYPES } from './logTypes';
 import { MOOD_OPTIONS } from './moodOptions';
 import {
@@ -16,7 +20,8 @@ import {
 import Switch from './Switch';
 import SyncCard from './SyncCard';
 import BackupCard from './BackupCard';
-import BottomNav from './BottomNav';
+import BottomNav, { type NavTab } from './BottomNav';
+import DailyReviewCard from './DailyReviewCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import TimerCard from './TimerCard';
@@ -24,7 +29,7 @@ import AlarmCard from './AlarmCard';
 import MusicCard from './MusicCard';
 import SleepReportCard from './SleepReportCard';
 import HistoryCard from './HistoryCard';
-import Collapsible from './Collapsible';
+import Collapsible, { BareCardContext } from './Collapsible';
 import JalaliDateInput from './JalaliDateInput';
 import {
   listLogItems,
@@ -42,21 +47,17 @@ import {
   listProjectCategories,
   listProjects,
   onCategoriesChanged,
-  listDailyReviewEntries,
-  addDailyReviewEntry,
-  editDailyReviewEntry,
-  deleteDailyReviewEntry,
   type LogItem,
   type LogItemType,
-  type DailyReviewEntry,
   type ProjectCategory,
   type Project,
 } from './repo';
 
 const TODAY = dayKey(0);
-const REVIEW_EDIT_WINDOW_DAYS = 7;
 
 export default function App() {
+  const [tab, setTab] = useState<NavTab>('today');
+  const [openCardId, setOpenCardId] = useState<string | null>(null);
   const [viewedDay, setViewedDay] = useState(TODAY);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
   const [prevDayLogItems, setPrevDayLogItems] = useState<LogItem[]>([]);
@@ -110,26 +111,18 @@ export default function App() {
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
-  const [reviewDay, setReviewDay] = useState(TODAY);
-  const [reviewInput, setReviewInput] = useState('');
-  const [reviewEntries, setReviewEntries] = useState<DailyReviewEntry[]>([]);
-  const [reviewListOpen, setReviewListOpen] = useState(true);
-  const [reviewEditingId, setReviewEditingId] = useState<string | null>(null);
-  const [reviewEditText, setReviewEditText] = useState('');
   const [loading, setLoading] = useState(true);
 
   const prevDay = shiftDayKey(viewedDay, -1);
 
   const reload = useCallback(async () => {
-    const [l, pl, r, pending] = await Promise.all([
+    const [l, pl, pending] = await Promise.all([
       listLogItems(viewedDay),
       listLogItems(prevDay),
-      listDailyReviewEntries(),
       listPendingWithDueDate(),
     ]);
     setLogItems(l);
     setPrevDayLogItems(pl);
-    setReviewEntries(r);
     setPendingWithDueDate(pending);
   }, [viewedDay, prevDay]);
 
@@ -420,28 +413,6 @@ export default function App() {
     setSleepDataVersion((v) => v + 1);
   }
 
-  async function onAddReview() {
-    if (!reviewInput.trim()) return;
-    await addDailyReviewEntry(reviewDay, reviewInput);
-    setReviewInput('');
-    await reload();
-  }
-  async function onDeleteReview(recId: string) {
-    await deleteDailyReviewEntry(recId);
-    await reload();
-  }
-  function onStartEditReview(e: DailyReviewEntry) {
-    setReviewEditingId(e.recId);
-    setReviewEditText(e.text);
-  }
-  async function onSaveEditReview() {
-    if (!reviewEditingId) return;
-    await editDailyReviewEntry(reviewEditingId, reviewEditText);
-    setReviewEditingId(null);
-    setReviewEditText('');
-    await reload();
-  }
-
   if (loading) {
     return (
       <div className="wrap">
@@ -519,6 +490,72 @@ export default function App() {
     it,
     ...(subtasksByParent.get(it.recId) ?? []),
   ]);
+
+  // Everything except the quick log lives behind the "مرور" tab, one row per
+  // card, each opening as its own page.
+  const BROWSE_CARDS: { id: string; title: string; Icon: LucideIcon; node: ReactNode }[] = [
+    { id: 'history', title: 'پیشینه', Icon: History, node: <HistoryCard /> },
+    { id: 'dailyreview', title: 'مرور روزانه', Icon: NotebookPen, node: <DailyReviewCard /> },
+    { id: 'sleep', title: 'گزارش خواب', Icon: Moon, node: <SleepReportCard refreshSignal={sleepDataVersion} /> },
+    { id: 'timer', title: 'تایمر چندمرحله‌ای', Icon: Timer, node: <TimerCard /> },
+    { id: 'alarm', title: 'آلارم', Icon: AlarmClock, node: <AlarmCard /> },
+    { id: 'music', title: 'پخش موسیقی', Icon: Music, node: <MusicCard /> },
+    { id: 'payments', title: 'پرداخت‌ها', Icon: Wallet, node: <PaymentsCard /> },
+    { id: 'projects', title: 'دسته‌بندی', Icon: FolderKanban, node: <ProjectLogCard /> },
+    { id: 'sync', title: 'همگام‌سازی بین دستگاه‌ها', Icon: RefreshCw, node: <SyncCard onSynced={reload} /> },
+    { id: 'backup', title: 'خروجی و ورودی کامل داده‌ها', Icon: Database, node: <BackupCard onImported={reload} /> },
+  ];
+
+  function onSelectTab(next: NavTab) {
+    setTab(next);
+    setOpenCardId(null);
+    window.scrollTo(0, 0);
+  }
+  function openCardPage(id: string) {
+    setOpenCardId(id);
+    window.scrollTo(0, 0);
+  }
+
+  const openCard = openCardId ? BROWSE_CARDS.find((c) => c.id === openCardId) ?? null : null;
+
+  // A card's own page: header + the card itself, and no bottom nav — the back
+  // arrow is the only way out, so the page reads as a place you went into.
+  if (openCard) {
+    return (
+      <div className="wrap page no-nav">
+        <div className="page-head">
+          <button className="page-back" onClick={() => setOpenCardId(null)} aria-label="بازگشت">
+            <ArrowRight size={22} />
+          </button>
+          <h1 className="page-title">{openCard.title}</h1>
+        </div>
+        <BareCardContext.Provider value={true}>{openCard.node}</BareCardContext.Provider>
+      </div>
+    );
+  }
+
+  if (tab !== 'today') {
+    return (
+      <>
+        <div className="wrap page">
+          <div className="page-head">
+            <h1 className="page-title">مرور</h1>
+          </div>
+          <div className="browse-list">
+            {BROWSE_CARDS.map((c) => (
+              <button key={c.id} className="browse-row" onClick={() => openCardPage(c.id)}>
+                <span className="browse-row-icon">
+                  <c.Icon size={22} />
+                </span>
+                <span className="browse-row-label">{c.title}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <BottomNav active={tab} onSelect={onSelectTab} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -1147,126 +1184,12 @@ export default function App() {
         )}
       </Collapsible>
 
-      <div id="section-history" />
-      <HistoryCard />
-
-      <Collapsible title="مرور روزانه" storageKey="dailyreview">
-        <div className="day-nav">
-          <button className="mini-btn" onClick={() => setReviewDay((d) => shiftDayKey(d, -1))} title="روز قبل">
-            <ChevronRight size={16} />
-          </button>
-          <span className="day-nav-label">
-            {reviewDay === TODAY ? 'برای امروز — ' : 'برای '}
-            {jalaliLabelForDayKey(reviewDay)}
-          </span>
-          <button className="mini-btn" onClick={() => setReviewDay((d) => shiftDayKey(d, 1))} title="روز بعد">
-            <ChevronLeft size={16} />
-          </button>
-          {reviewDay !== TODAY && (
-            <button className="link-btn" onClick={() => setReviewDay(TODAY)}>
-              برگشت به امروز
-            </button>
-          )}
-        </div>
-        <textarea
-          className="review"
-          placeholder="چی گذشت؟ (۲-۳ خط کافیه)"
-          value={reviewInput}
-          onChange={(e) => setReviewInput(e.target.value)}
-        />
-        <div className="add-row">
-          <button onClick={onAddReview}>ثبت</button>
-        </div>
-
-        <button
-          className="link-btn chevron-inline"
-          style={{ marginTop: 10 }}
-          onClick={() => setReviewListOpen((v) => !v)}
-        >
-          <span className={'chevron-btn small' + (reviewListOpen ? '' : ' collapsed')}>
-            <ChevronDown size={14} />
-          </span>
-          {reviewListOpen ? 'پنهان کردن لیست مرورها' : `نمایش لیست مرورها (${reviewEntries.length})`}
-        </button>
-
-        {reviewListOpen &&
-          (reviewEntries.length === 0 ? (
-            <div className="empty">هنوز مروری ثبت نشده.</div>
-          ) : (
-            <div className="proj-history">
-              {reviewEntries.map((e) => {
-                const editable = Math.abs(daysBetweenDayKeys(e.day, TODAY)) <= REVIEW_EDIT_WINDOW_DAYS;
-                const isEditing = reviewEditingId === e.recId;
-                return (
-                  <div className="log-item" key={e.recId}>
-                    <span className="log-mark">
-                      <Minus size={15} />
-                    </span>
-                    <div style={{ flex: 1 }}>
-                      <div className="review-meta">
-                        <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
-                          {jalaliLabelForDayKey(e.day)}
-                        </span>
-                      </div>
-                      {isEditing ? (
-                        <>
-                          <textarea
-                            className="review"
-                            style={{ minHeight: 60 }}
-                            value={reviewEditText}
-                            onChange={(ev) => setReviewEditText(ev.target.value)}
-                          />
-                          <div className="add-row">
-                            <button onClick={onSaveEditReview}>ذخیره</button>
-                            <button className="link-btn" onClick={() => setReviewEditingId(null)}>
-                              انصراف
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <span className="log-text">{e.text}</span>
-                      )}
-                    </div>
-                    {!isEditing && editable && (
-                      <button className="habit-del" onClick={() => onStartEditReview(e)} title="ویرایش">
-                        <Pencil size={13} />
-                      </button>
-                    )}
-                    <button className="habit-del" onClick={() => onDeleteReview(e.recId)} title="حذف">
-                      <X size={13} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-      </Collapsible>
-
-      <SleepReportCard refreshSignal={sleepDataVersion} />
-
-      <div id="section-tools" />
-      <TimerCard />
-
-      <AlarmCard />
-
-      <div id="section-music" />
-      <MusicCard />
-
-      <div id="section-more" />
-      <PaymentsCard />
-
-      <ProjectLogCard />
-
-      <SyncCard onSynced={reload} />
-
-      <BackupCard onImported={reload} />
-
       <div className="footnote">
         اطلاعات همین دستگاه ذخیره می‌شه؛ اگه همگام‌سازی رو تنظیم کنی، بین دستگاه‌هات هم به‌روز می‌مونه.
         تاریخ‌ها شمسی نمایش داده می‌شن.
       </div>
     </div>
-    <BottomNav />
+    <BottomNav active={tab} onSelect={onSelectTab} />
     </>
   );
 }

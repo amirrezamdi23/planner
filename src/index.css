@@ -123,6 +123,90 @@ header {
   margin-top: 4px;
 }
 
+/* Header of a standalone page — the browse list, or one card on its own.
+   RTL puts the back arrow on the right, which is where the DOM order lands
+   it (first child = rightmost). */
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.page-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+}
+.page-back:hover {
+  background: var(--paper-line);
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+/* Browse list: one row per card, grouped into a single hairline-separated
+   block the way a settings list reads. */
+.browse-list {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--paper-line);
+  box-shadow: var(--shadow);
+}
+.browse-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px;
+  background: var(--card);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: none;
+  border-bottom: 1px solid var(--paper-line);
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+}
+.browse-row:last-child {
+  border-bottom: none;
+}
+.browse-row:active {
+  background: var(--paper-line);
+}
+.browse-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--rust);
+}
+.browse-row-label {
+  flex: 1;
+}
+/* A card page carries no bottom nav, so it doesn't need to reserve room for one. */
+.wrap.page.no-nav {
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+.card-bare-tag {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+
 .card {
   background: var(--card);
   backdrop-filter: blur(16px) saturate(150%);
