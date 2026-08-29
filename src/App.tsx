@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check, Minus, MessageSquare } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check, Minus, MessageSquare, ListPlus } from 'lucide-react';
 import { LOG_TYPES } from './logTypes';
 import { MOOD_OPTIONS } from './moodOptions';
 import {
@@ -38,6 +38,7 @@ import {
   addNapNone,
   listPendingWithDueDate,
   setLogComment,
+  addSubtask,
   listProjectCategories,
   listProjects,
   onCategoriesChanged,
@@ -65,6 +66,7 @@ export default function App() {
   const [holdingPriorityBtn, setHoldingPriorityBtn] = useState(false);
   const [logCategoryId, setLogCategoryId] = useState<string | null>(null);
   const [logProjectId, setLogProjectId] = useState<string | null>(null);
+  const [logPhaseId, setLogPhaseId] = useState<string | null>(null);
   const [logHasNotes, setLogHasNotes] = useState(false);
   const [logNotesInput, setLogNotesInput] = useState('');
   const [logHasDueDate, setLogHasDueDate] = useState(false);
@@ -87,6 +89,7 @@ export default function App() {
   const [editingLogDayKey, setEditingLogDayKey] = useState(TODAY);
   const [editingLogCategoryId, setEditingLogCategoryId] = useState<string | null>(null);
   const [editingLogProjectId, setEditingLogProjectId] = useState<string | null>(null);
+  const [editingLogPhaseId, setEditingLogPhaseId] = useState<string | null>(null);
   const [editingLogHasNotes, setEditingLogHasNotes] = useState(false);
   const [editingLogNotesInput, setEditingLogNotesInput] = useState('');
   const [editingLogHasDueDate, setEditingLogHasDueDate] = useState(false);
@@ -102,6 +105,8 @@ export default function App() {
   const [commentOpenId, setCommentOpenId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [commentEditing, setCommentEditing] = useState(false);
+  const [subtaskOpenId, setSubtaskOpenId] = useState<string | null>(null);
+  const [subtaskDraft, setSubtaskDraft] = useState('');
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
@@ -170,10 +175,19 @@ export default function App() {
     if (!id) return null;
     return allProjects.find((p) => p.id === id)?.name ?? null;
   }
+  function phasesOf(projectId?: string | null) {
+    if (!projectId) return [];
+    return allProjects.find((p) => p.id === projectId)?.phases ?? [];
+  }
+  function phaseName(projectId?: string, phaseId?: string): string | null {
+    if (!phaseId) return null;
+    return phasesOf(projectId).find((ph) => ph.id === phaseId)?.name ?? null;
+  }
 
   function onSelectLogCategory(catId: string) {
     setLogCategoryId((cur) => (cur === catId ? null : catId));
     setLogProjectId(null);
+    setLogPhaseId(null);
   }
   function toggleNotesExpanded(recId: string) {
     setExpandedNotesIds((prev) => {
@@ -186,6 +200,7 @@ export default function App() {
   function onSelectEditCategory(catId: string) {
     setEditingLogCategoryId((cur) => (cur === catId ? null : catId));
     setEditingLogProjectId(null);
+    setEditingLogPhaseId(null);
   }
 
   async function onAddLog() {
@@ -197,6 +212,7 @@ export default function App() {
       priority: logPriorityPending,
       categoryId: logCategoryId ?? undefined,
       projectId: logProjectId ?? undefined,
+      phaseId: logPhaseId ?? undefined,
       notes: logHasNotes ? logNotesInput.trim() || undefined : undefined,
       dueDate: logHasDueDate ? logDueDateKey : undefined,
     });
@@ -298,6 +314,16 @@ export default function App() {
     setCommentEditing(false);
     await reload();
   }
+  function onToggleSubtaskBox(recId: string) {
+    setSubtaskDraft('');
+    setSubtaskOpenId((cur) => (cur === recId ? null : recId));
+  }
+  async function onAddSubtask(parentRecId: string) {
+    if (!subtaskDraft.trim()) return;
+    await addSubtask(parentRecId, subtaskDraft);
+    setSubtaskDraft(''); // stay open — adding several in a row is the common case
+    await reload();
+  }
   function onStartEditLog(it: LogItem) {
     setEditingLogId(it.recId);
     setEditingLogText(it.text);
@@ -305,6 +331,7 @@ export default function App() {
     setEditingLogDayKey(it.day);
     setEditingLogCategoryId(it.categoryId ?? null);
     setEditingLogProjectId(it.projectId ?? null);
+    setEditingLogPhaseId(it.phaseId ?? null);
     setEditingLogHasNotes(!!it.notes);
     setEditingLogNotesInput(it.notes ?? '');
     setEditingLogHasDueDate(!!it.dueDate);
@@ -321,6 +348,7 @@ export default function App() {
       itemType: editingLogType,
       categoryId: editingLogCategoryId ?? undefined,
       projectId: editingLogProjectId ?? undefined,
+      phaseId: editingLogPhaseId ?? undefined,
       notes: editingLogHasNotes ? editingLogNotesInput.trim() || undefined : undefined,
       dueDate: editingLogHasDueDate ? editingLogDueDateKey : undefined,
     });
@@ -470,10 +498,27 @@ export default function App() {
     if (daysUntil <= 10) return 'yellow';
     return null;
   }
-  const reminderItems = pendingWithDueDate.filter((it) => it.day !== viewedDay && dueStatusFor(it) !== null);
+  const reminderItems = pendingWithDueDate.filter(
+    (it) => it.day !== viewedDay && !it.parentId && dueStatusFor(it) !== null,
+  );
+  // Subtasks never stand on their own in the list — they're pulled out here and
+  // re-inserted directly under whichever task they belong to.
+  const subtasksByParent = new Map<string, LogItem[]>();
+  for (const it of taskLogItems) {
+    if (!it.parentId) continue;
+    const siblings = subtasksByParent.get(it.parentId) ?? [];
+    siblings.push(it);
+    subtasksByParent.set(it.parentId, siblings);
+  }
   // Priority is set by long-pressing a row (see onMarkPointerDown below), not
   // at creation time — sort those to the top instead of a separate control.
-  const sortedTaskLogItems = [...taskLogItems].sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
+  const sortedTaskLogItems = taskLogItems
+    .filter((it) => !it.parentId)
+    .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
+  const renderedItems = [...reminderItems, ...sortedTaskLogItems].flatMap((it) => [
+    it,
+    ...(subtasksByParent.get(it.recId) ?? []),
+  ]);
 
   return (
     <>
@@ -633,17 +678,21 @@ export default function App() {
             {reminderItems.length === 0 && taskLogItems.length === 0 && (
               <div className="empty">چیزی ثبت نشده.</div>
             )}
-            {[...reminderItems, ...sortedTaskLogItems].map((it) => {
+            {renderedItems.map((it) => {
               const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
               const canToggle = it.itemType === 'task';
+              const isSub = !!it.parentId;
               const catObj = categoryOf(it.categoryId);
               const catName = catObj?.name ?? null;
               const projName = projectName(it.projectId);
+              const phName = phaseName(it.projectId, it.phaseId);
+              const subs = subtasksByParent.get(it.recId) ?? [];
               const isEditing = editingLogId === it.recId;
               const dueStatus = dueStatusFor(it);
               const dueDaysLeft = it.dueDate ? daysBetweenDayKeys(viewedDay, it.dueDate) : null;
               const rowClass =
                 'log-item' +
+                (isSub ? ' sub-item' : '') +
                 (it.priority ? ' priority' : '') +
                 (dueStatus === 'red' ? ' due-urgent' : dueStatus === 'yellow' ? ' due-soon' : '');
 
@@ -718,9 +767,36 @@ export default function App() {
                                     background: categoryOf(editingLogCategoryId ?? undefined)?.bg ?? 'var(--paper)',
                                     color: categoryOf(editingLogCategoryId ?? undefined)?.color ?? 'var(--ink-soft)',
                                   }}
-                                  onClick={() => setEditingLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                                  onClick={() => {
+                                    setEditingLogProjectId((cur) => (cur === p.id ? null : p.id));
+                                    setEditingLogPhaseId(null);
+                                  }}
                                 >
                                   {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {phasesOf(editingLogProjectId).length > 0 && (
+                            <div className="cat-select" style={{ paddingInlineStart: 24 }}>
+                              <button
+                                className={'cat-btn' + (editingLogPhaseId === null ? ' active' : '')}
+                                style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                                onClick={() => setEditingLogPhaseId(null)}
+                              >
+                                بدون فاز
+                              </button>
+                              {phasesOf(editingLogProjectId).map((ph) => (
+                                <button
+                                  key={ph.id}
+                                  className={'cat-btn' + (editingLogPhaseId === ph.id ? ' active' : '')}
+                                  style={{
+                                    background: categoryOf(editingLogCategoryId ?? undefined)?.bg ?? 'var(--paper)',
+                                    color: categoryOf(editingLogCategoryId ?? undefined)?.color ?? 'var(--ink-soft)',
+                                  }}
+                                  onClick={() => setEditingLogPhaseId((cur) => (cur === ph.id ? null : ph.id))}
+                                >
+                                  {ph.name}
                                 </button>
                               ))}
                             </div>
@@ -804,13 +880,19 @@ export default function App() {
                   <div style={{ flex: 1 }}>
                     <span className={'log-text' + (it.done ? ' done' : '') + (it.failed ? ' failed' : '')}>
                       {it.text}
-                      {catName && (
+                      {!isSub && catName && (
                         <span
                           className="pill"
                           style={{ background: catObj?.bg ?? 'var(--paper)', color: catObj?.color ?? 'var(--ink-soft)', marginInlineStart: 6 }}
                         >
                           {catName}
                           {projName ? ` › ${projName}` : ''}
+                          {phName ? ` › ${phName}` : ''}
+                        </span>
+                      )}
+                      {subs.length > 0 && (
+                        <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
+                          {subs.filter((s) => s.done).length}/{subs.length}
                         </span>
                       )}
                       {it.dueDate && (
@@ -833,6 +915,15 @@ export default function App() {
                         <ChevronDown size={14} />
                       </button>
                     )}
+                    {canToggle && !isSub && (
+                      <button
+                        className={'habit-del' + (subs.length > 0 ? ' active' : '')}
+                        onClick={() => onToggleSubtaskBox(it.recId)}
+                        title="زیرکار"
+                      >
+                        <ListPlus size={13} />
+                      </button>
+                    )}
                     {canToggle && (
                       <button
                         className={'habit-del' + (it.comment ? ' active' : '')}
@@ -845,7 +936,7 @@ export default function App() {
                     <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
                       <Pencil size={13} />
                     </button>
-                    {it.day !== TODAY && !it.done && !it.failed && (
+                    {!isSub && it.day !== TODAY && !it.done && !it.failed && (
                       <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="موکول به امروز">
                         <Redo2 size={13} />
                       </button>
@@ -876,6 +967,18 @@ export default function App() {
                         </button>
                       </>
                     )}
+                  </div>
+                )}
+                {canToggle && !isSub && subtaskOpenId === it.recId && (
+                  <div className="log-item comment-row">
+                    <input
+                      value={subtaskDraft}
+                      onChange={(e) => setSubtaskDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && onAddSubtask(it.recId)}
+                      placeholder="یک زیرکار…"
+                      autoFocus
+                    />
+                    <button onClick={() => onAddSubtask(it.recId)}>افزودن</button>
                   </div>
                 )}
                 </Fragment>
@@ -942,9 +1045,34 @@ export default function App() {
                         key={p.id}
                         className={'cat-btn' + (logProjectId === p.id ? ' active' : '')}
                         style={{ background: categoryOf(logCategoryId)?.bg ?? 'var(--paper)', color: categoryOf(logCategoryId)?.color ?? 'var(--ink-soft)' }}
-                        onClick={() => setLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                        onClick={() => {
+                          setLogProjectId((cur) => (cur === p.id ? null : p.id));
+                          setLogPhaseId(null);
+                        }}
                       >
                         {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {phasesOf(logProjectId).length > 0 && (
+                  <div className="cat-select" style={{ paddingInlineStart: 24 }}>
+                    <button
+                      className={'cat-btn' + (logPhaseId === null ? ' active' : '')}
+                      style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                      onClick={() => setLogPhaseId(null)}
+                    >
+                      بدون فاز
+                    </button>
+                    {phasesOf(logProjectId).map((ph) => (
+                      <button
+                        key={ph.id}
+                        className={'cat-btn' + (logPhaseId === ph.id ? ' active' : '')}
+                        style={{ background: categoryOf(logCategoryId)?.bg ?? 'var(--paper)', color: categoryOf(logCategoryId)?.color ?? 'var(--ink-soft)' }}
+                        onClick={() => setLogPhaseId((cur) => (cur === ph.id ? null : ph.id))}
+                      >
+                        {ph.name}
                       </button>
                     ))}
                   </div>

@@ -14,6 +14,8 @@ import {
   deleteProject,
   moveProjectToCategory,
   ensureOtherCategoryAndMigrateLegacyProjects,
+  setProjectPhases,
+  DEFAULT_PHASE_NAMES,
   listProjectLog,
   addProjectLogEntry,
   deleteProjectLogEntry,
@@ -86,6 +88,7 @@ export default function ProjectLogCard() {
 
   const [entries, setEntries] = useState<ProjectLogEntry[]>([]);
   const [entryInput, setEntryInput] = useState('');
+  const [phaseInput, setPhaseInput] = useState('');
 
   const reloadCategories = useCallback(async () => {
     const list = await listProjectCategories();
@@ -202,6 +205,16 @@ export default function ProjectLogCard() {
     if (!window.confirm('این پروژه و لاگ‌های ثبت‌شده براش حذف می‌شن. مطمئنی؟')) return;
     await deleteProject(recId);
     await reloadProjects(selectedCategoryId);
+  }
+
+  async function saveProjectPhases(project: Project, names: string[]) {
+    await setProjectPhases(project.recId, names);
+    await reloadProjects(selectedCategoryId);
+  }
+  async function onAddPhase(project: Project) {
+    if (!phaseInput.trim()) return;
+    await saveProjectPhases(project, [...project.phases.map((p) => p.name), phaseInput]);
+    setPhaseInput('');
   }
 
   async function onAddEntry() {
@@ -354,6 +367,47 @@ export default function ProjectLogCard() {
       <button className="link-btn" onClick={backToProjects}>
         <ChevronLeft size={14} /> بازگشت به لیست پروژه‌ها
       </button>
+
+      {/* Phases are optional: a project only gets them if the user asks, and
+          then every task filed under the project can name which one it's in. */}
+      <div className="proj-divider" />
+      <div style={{ fontSize: 12, color: 'var(--ink-soft)', marginBottom: 6 }}>فازهای پروژه</div>
+      {selectedProject.phases.length === 0 ? (
+        <div className="add-row" style={{ marginTop: 0 }}>
+          <span className="empty" style={{ flex: 1, padding: 0 }}>این پروژه فاز ندارد.</span>
+          <button className="link-btn" onClick={() => saveProjectPhases(selectedProject, DEFAULT_PHASE_NAMES)}>
+            افزودن فازهای پیش‌فرض
+          </button>
+        </div>
+      ) : (
+        <div className="cat-select">
+          {selectedProject.phases.map((ph) => (
+            <button
+              key={ph.id}
+              className="cat-btn active"
+              style={{ background: selectedCategory.bg ?? 'var(--paper)', color: selectedCategory.color ?? 'var(--ink-soft)' }}
+              title="حذف این فاز"
+              onClick={() =>
+                saveProjectPhases(
+                  selectedProject,
+                  selectedProject.phases.filter((x) => x.id !== ph.id).map((x) => x.name),
+                )
+              }
+            >
+              {ph.name} <X size={11} />
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="add-row">
+        <input
+          placeholder="فاز جدید…"
+          value={phaseInput}
+          onChange={(e) => setPhaseInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && onAddPhase(selectedProject)}
+        />
+        <button onClick={() => onAddPhase(selectedProject)}>افزودن فاز</button>
+      </div>
 
       <div className="proj-divider" />
       {last ? (

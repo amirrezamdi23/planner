@@ -1,4 +1,5 @@
 import db, { makeRecord, type Rec } from './db';
+import { newId } from './lib/id';
 import { recurringPaymentCycle, jalaliCycleKey, shiftDayKey } from './lib/date';
 
 // Categories/projects are edited from ProjectLogCard but read by other cards
@@ -39,6 +40,8 @@ export interface LogItemPayload {
   notes?: string;
   dueDate?: string; // day-key
   comment?: string;
+  phaseId?: string; // only meaningful when the item's project defines phases
+  parentId?: string; // set on a subtask — the recId of the task it belongs to
 }
 export interface DailyReviewPayload {
   day: string;
@@ -65,6 +68,8 @@ export interface LogItem {
   notes?: string;
   dueDate?: string;
   comment?: string;
+  phaseId?: string;
+  parentId?: string;
 }
 
 async function liveByType(type: Rec['type']): Promise<Rec[]> {
@@ -117,29 +122,33 @@ export async function toggleHabitCheck(habitId: string, day: string): Promise<vo
 }
 
 // ---------- quick log ----------
+function toLogItem(r: Rec): LogItem {
+  const p = r.payload as LogItemPayload;
+  return {
+    recId: r.id,
+    day: p.day,
+    text: p.text,
+    done: p.done,
+    failed: p.failed,
+    itemType: p.itemType,
+    priority: p.priority,
+    categoryId: p.categoryId,
+    projectId: p.projectId,
+    durationMin: p.durationMin,
+    notes: p.notes,
+    dueDate: p.dueDate,
+    comment: p.comment,
+    phaseId: p.phaseId,
+    parentId: p.parentId,
+  };
+}
+
 export async function listLogItems(day: string): Promise<LogItem[]> {
   const recs = await liveByType('log_item');
   return recs
     .filter((r) => (r.payload as LogItemPayload).day === day)
     .sort((a, b) => a.id.localeCompare(b.id))
-    .map((r) => {
-      const p = r.payload as LogItemPayload;
-      return {
-        recId: r.id,
-        day: p.day,
-        text: p.text,
-        done: p.done,
-        failed: p.failed,
-        itemType: p.itemType,
-        priority: p.priority,
-        categoryId: p.categoryId,
-        projectId: p.projectId,
-        durationMin: p.durationMin,
-        notes: p.notes,
-        dueDate: p.dueDate,
-        comment: p.comment,
-      };
-    });
+    .map(toLogItem);
 }
 
 export interface AddLogItemInput {
@@ -151,6 +160,7 @@ export interface AddLogItemInput {
   projectId?: string;
   notes?: string;
   dueDate?: string;
+  phaseId?: string;
 }
 
 export async function addLogItem(input: AddLogItemInput): Promise<void> {
@@ -166,6 +176,30 @@ export async function addLogItem(input: AddLogItemInput): Promise<void> {
       projectId: input.projectId,
       notes: input.notes,
       dueDate: input.dueDate,
+      phaseId: input.phaseId,
+    } as LogItemPayload),
+  );
+}
+
+// A subtask is just another 'task' log item that names its parent — it lives
+// on the same day and inherits the parent's category/project/phase so it
+// never drifts out of the grouping its parent belongs to.
+export async function addSubtask(parentRecId: string, text: string): Promise<void> {
+  if (!text.trim()) return;
+  const parent = await db.records.get(parentRecId);
+  if (!parent) return;
+  const p = parent.payload as LogItemPayload;
+  await db.records.put(
+    makeRecord('log_item', {
+      day: p.day,
+      text: text.trim(),
+      done: false,
+      itemType: 'task',
+      priority: false,
+      categoryId: p.categoryId,
+      projectId: p.projectId,
+      phaseId: p.phaseId,
+      parentId: parentRecId,
     } as LogItemPayload),
   );
 }
@@ -178,6 +212,7 @@ export interface EditLogItemInput {
   projectId?: string;
   notes?: string;
   dueDate?: string;
+  phaseId?: string;
 }
 
 export async function editLogItem(input: EditLogItemInput): Promise<void> {
@@ -195,6 +230,7 @@ export async function editLogItem(input: EditLogItemInput): Promise<void> {
       projectId: input.projectId,
       notes: input.notes,
       dueDate: input.dueDate,
+      phaseId: input.phaseId,
     },
     updatedAt: new Date().toISOString(),
   });
@@ -210,24 +246,7 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
       const p = r.payload as LogItemPayload;
       return !p.done && !p.failed && !!p.dueDate;
     })
-    .map((r) => {
-      const p = r.payload as LogItemPayload;
-      return {
-        recId: r.id,
-        day: p.day,
-        text: p.text,
-        done: p.done,
-        failed: p.failed,
-        itemType: p.itemType,
-        priority: p.priority,
-        categoryId: p.categoryId,
-        projectId: p.projectId,
-        durationMin: p.durationMin,
-        notes: p.notes,
-        dueDate: p.dueDate,
-        comment: p.comment,
-      };
-    });
+    .map(toLogItem);
 }
 
 // All user-authored notes/tasks/events/ideas across every day — the
@@ -243,24 +262,7 @@ export async function listAllLogItems(): Promise<LogItem[]> {
   const NOTE_TYPES: LogItemType[] = ['task', 'event', 'note', 'idea'];
   const quickItems: LogItem[] = recs
     .filter((r) => NOTE_TYPES.includes((r.payload as LogItemPayload).itemType))
-    .map((r) => {
-      const p = r.payload as LogItemPayload;
-      return {
-        recId: r.id,
-        day: p.day,
-        text: p.text,
-        done: p.done,
-        failed: p.failed,
-        itemType: p.itemType,
-        priority: p.priority,
-        categoryId: p.categoryId,
-        projectId: p.projectId,
-        durationMin: p.durationMin,
-        notes: p.notes,
-        dueDate: p.dueDate,
-        comment: p.comment,
-      };
-    });
+    .map(toLogItem);
 
   const projectRecs = await liveByType('project');
   const categoryByProjectId = new Map(
@@ -365,10 +367,19 @@ export async function togglePriority(recId: string): Promise<void> {
   });
 }
 
+// Deleting a task takes its subtasks with it — a subtask whose parent is gone
+// has nothing to hang off and would just vanish from the list as an orphan.
 export async function deleteLogItem(recId: string): Promise<void> {
   const r = await db.records.get(recId);
   if (!r) return;
-  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+  const now = new Date().toISOString();
+  await db.records.put({ ...r, deleted: true, updatedAt: now });
+  const recs = await liveByType('log_item');
+  for (const child of recs) {
+    if ((child.payload as LogItemPayload).parentId === recId) {
+      await db.records.put({ ...child, deleted: true, updatedAt: now });
+    }
+  }
 }
 
 // Bullet Journal migration: move an item (usually a still-undone task found
@@ -377,11 +388,16 @@ export async function moveLogItem(recId: string, newDay: string): Promise<void> 
   const r = await db.records.get(recId);
   if (!r) return;
   const p = r.payload as LogItemPayload;
-  await db.records.put({
-    ...r,
-    payload: { ...p, day: newDay },
-    updatedAt: new Date().toISOString(),
-  });
+  const now = new Date().toISOString();
+  await db.records.put({ ...r, payload: { ...p, day: newDay }, updatedAt: now });
+  // Subtasks always live on their parent's day — carry them along.
+  const recs = await liveByType('log_item');
+  for (const child of recs) {
+    const cp = child.payload as LogItemPayload;
+    if (cp.parentId === recId && cp.day !== newDay) {
+      await db.records.put({ ...child, payload: { ...cp, day: newDay }, updatedAt: now });
+    }
+  }
 }
 
 // ---------- sleep report ----------
@@ -685,15 +701,25 @@ export async function deleteProjectCategory(recId: string): Promise<void> {
 // ---------- project log ----------
 // A per-project running history — pick a project, see what you did last and
 // everything you've done on it since, across however many days it takes.
+// Phases are opt-in per project: a long-running project (learning to trade,
+// building an app) benefits from knowing "which stage am I at", while a
+// one-off like a dentist visit would only be burdened by it. A project with
+// an empty/absent `phases` behaves exactly as it did before this existed.
+export interface ProjectPhase {
+  id: string;
+  name: string;
+}
 export interface ProjectPayload {
   name: string;
   categoryId: string;
+  phases?: ProjectPhase[];
 }
 export interface Project {
   recId: string;
   id: string;
   name: string;
   categoryId: string;
+  phases: ProjectPhase[];
 }
 export interface ProjectLogPayload {
   projectId: string;
@@ -713,9 +739,35 @@ export async function listProjects(categoryId?: string): Promise<Project[]> {
     .filter((r) => !categoryId || (r.payload as ProjectPayload).categoryId === categoryId)
     .map((r) => {
       const p = r.payload as ProjectPayload;
-      return { recId: r.id, id: r.id, name: p.name, categoryId: p.categoryId };
+      return { recId: r.id, id: r.id, name: p.name, categoryId: p.categoryId, phases: p.phases ?? [] };
     })
     .sort((a, b) => a.recId.localeCompare(b.recId));
+}
+
+// The three phases cover the shape of nearly any personal project without
+// the ceremony of a five-stage product pipeline.
+export const DEFAULT_PHASE_NAMES = ['آماده‌سازی', 'اجرا', 'جمع‌بندی'];
+
+export async function setProjectPhases(recId: string, names: string[]): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as ProjectPayload;
+  const existing = p.phases ?? [];
+  // Reuse the id of a phase that keeps its name, so items already filed under
+  // it stay filed under it across an edit.
+  const phases: ProjectPhase[] = names
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .map((name) => ({ id: existing.find((e) => e.name === name)?.id ?? newId(), name }));
+  await db.records.put({ ...r, payload: { ...p, phases }, updatedAt: new Date().toISOString() });
+  notifyCategoriesChanged();
+}
+
+export async function setLogPhase(recId: string, phaseId?: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({ ...r, payload: { ...p, phaseId }, updatedAt: new Date().toISOString() });
 }
 
 export async function addProject(name: string, categoryId: string): Promise<void> {

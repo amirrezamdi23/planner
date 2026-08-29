@@ -296,6 +296,18 @@ header {
   gap: 8px;
   padding-inline-start: 30px;
 }
+/* A subtask sits under its parent task — indented, quieter, and with no
+   dashed rule of its own so the group reads as one block. */
+.log-item.sub-item {
+  padding-inline-start: 30px;
+  border-bottom: none;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.log-item.sub-item .log-text {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
 .comment-text {
   flex: 1;
   font-size: 13px;
