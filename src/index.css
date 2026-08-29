@@ -375,6 +375,11 @@ header {
   border-color: var(--teal);
   color: #fff;
 }
+.log-check.failed {
+  background: var(--rust);
+  border-color: var(--rust);
+  color: #fff;
+}
 .log-text {
   flex: 1;
   font-size: 14px;
@@ -382,6 +387,10 @@ header {
 .log-text.done {
   text-decoration: line-through;
   color: var(--ink-soft);
+}
+.log-text.failed {
+  text-decoration: line-through;
+  color: var(--rust);
 }
 /* Exclusive-select icon buttons that start compact and widen to reveal a
    label when picked — the label span is always in the DOM so max-width can

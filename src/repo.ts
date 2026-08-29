@@ -30,6 +30,7 @@ export interface LogItemPayload {
   day: string;
   text: string;
   done: boolean;
+  failed?: boolean; // attempted but couldn't finish — 'task' items only
   itemType: LogItemType;
   priority: boolean;
   categoryId?: string;
@@ -55,6 +56,7 @@ export interface LogItem {
   day: string;
   text: string;
   done: boolean;
+  failed?: boolean;
   itemType: LogItemType;
   priority: boolean;
   categoryId?: string;
@@ -127,6 +129,7 @@ export async function listLogItems(day: string): Promise<LogItem[]> {
         day: p.day,
         text: p.text,
         done: p.done,
+        failed: p.failed,
         itemType: p.itemType,
         priority: p.priority,
         categoryId: p.categoryId,
@@ -205,7 +208,7 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
   return recs
     .filter((r) => {
       const p = r.payload as LogItemPayload;
-      return !p.done && !!p.dueDate;
+      return !p.done && !p.failed && !!p.dueDate;
     })
     .map((r) => {
       const p = r.payload as LogItemPayload;
@@ -214,6 +217,7 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
         day: p.day,
         text: p.text,
         done: p.done,
+        failed: p.failed,
         itemType: p.itemType,
         priority: p.priority,
         categoryId: p.categoryId,
@@ -246,6 +250,7 @@ export async function listAllLogItems(): Promise<LogItem[]> {
         day: p.day,
         text: p.text,
         done: p.done,
+        failed: p.failed,
         itemType: p.itemType,
         priority: p.priority,
         categoryId: p.categoryId,
@@ -324,13 +329,16 @@ export async function editWakeTime(day: string, time: string): Promise<void> {
   await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
 }
 
-export async function toggleLogDone(recId: string): Promise<void> {
+// Three-state cycle for a task's checkbox: not done -> done -> failed
+// (attempted but couldn't finish) -> not done again.
+export async function cycleLogStatus(recId: string): Promise<void> {
   const r = await db.records.get(recId);
   if (!r) return;
   const p = r.payload as LogItemPayload;
+  const next = !p.done && !p.failed ? { done: true, failed: false } : p.done ? { done: false, failed: true } : { done: false, failed: false };
   await db.records.put({
     ...r,
-    payload: { ...p, done: !p.done },
+    payload: { ...p, ...next },
     updatedAt: new Date().toISOString(),
   });
 }

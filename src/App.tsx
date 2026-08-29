@@ -30,7 +30,7 @@ import {
   listLogItems,
   addLogItem,
   editLogItem,
-  toggleLogDone,
+  cycleLogStatus,
   togglePriority,
   deleteLogItem,
   moveLogItem,
@@ -240,7 +240,7 @@ export default function App() {
     setLogType(typeId);
   }
   async function onToggleLog(recId: string) {
-    await toggleLogDone(recId);
+    await cycleLogStatus(recId);
     await reload();
   }
 
@@ -458,7 +458,7 @@ export default function App() {
   // fully passed it keeps reappearing — pinned, still red — on every day
   // after, until it's checked off.
   function dueStatusFor(it: LogItem): 'yellow' | 'red' | null {
-    if (!it.dueDate || it.done) return null;
+    if (!it.dueDate || it.done || it.failed) return null;
     const daysUntil = daysBetweenDayKeys(viewedDay, it.dueDate);
     if (daysUntil <= 3) return 'red';
     if (daysUntil <= 10) return 'yellow';
@@ -774,14 +774,15 @@ export default function App() {
                 <div className={rowClass}>
                   {canToggle ? (
                     <button
-                      className={'log-check' + (it.done ? ' done' : '')}
+                      className={'log-check' + (it.done ? ' done' : '') + (it.failed ? ' failed' : '')}
                       onPointerDown={() => onMarkPointerDown(it.recId)}
                       onPointerUp={onMarkPointerUp}
                       onPointerLeave={onMarkPointerUp}
                       onClick={(e) => onMarkClick(e, () => onToggleLog(it.recId))}
-                      title="برای تیک‌زدن کلیک کن، برای اولویت بالا نگه‌دار"
+                      title="یک بار برای تیک، دوباره برای علامت نشدنی؛ برای اولویت بالا نگه‌دار"
                     >
                       {it.done && <Check size={13} />}
+                      {it.failed && <Minus size={13} />}
                     </button>
                   ) : (
                     <span
@@ -795,7 +796,7 @@ export default function App() {
                     </span>
                   )}
                   <div style={{ flex: 1 }}>
-                    <span className={'log-text' + (it.done ? ' done' : '')}>
+                    <span className={'log-text' + (it.done ? ' done' : '') + (it.failed ? ' failed' : '')}>
                       {it.text}
                       {catName && (
                         <span
@@ -815,11 +816,6 @@ export default function App() {
                       )}
                     </span>
                     {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
-                    {it.comment && (
-                      <div className="pay-sub icon-row">
-                        <MessageSquare size={11} /> {it.comment}
-                      </div>
-                    )}
                   </div>
                   <div className="log-actions">
                     {it.notes && (
@@ -843,7 +839,7 @@ export default function App() {
                     <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
                       <Pencil size={13} />
                     </button>
-                    {it.day !== TODAY && !it.done && (
+                    {it.day !== TODAY && !it.done && !it.failed && (
                       <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="موکول به امروز">
                         <Redo2 size={13} />
                       </button>
