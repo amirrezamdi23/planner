@@ -294,6 +294,7 @@ header {
 .comment-row {
   align-items: center;
   gap: 8px;
+  padding-inline-start: 30px;
 }
 .comment-text {
   flex: 1;
