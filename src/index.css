@@ -207,6 +207,165 @@ header {
   margin-bottom: 10px;
 }
 
+/* ---- Upcoming: week navigator + per-day sections ---- */
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.week-nav-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.week-strip {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.week-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  font-family: inherit;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.week-day-name {
+  font-size: 10.5px;
+}
+.week-day-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.week-day-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: transparent;
+}
+.week-day-dot.on {
+  background: var(--rust);
+}
+.week-day.is-today .week-day-num {
+  color: var(--rust);
+}
+.week-day.selected {
+  background: var(--card);
+  border-color: var(--paper-line);
+}
+
+.upcoming-day {
+  margin-bottom: 18px;
+}
+.upcoming-day-head {
+  font-size: 13px;
+  font-weight: 700;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--paper-line);
+}
+.upcoming-day-head.is-today {
+  color: var(--rust);
+}
+.upcoming-day-head.overdue {
+  color: var(--rust);
+}
+
+/* ---- Habits: one row per habit, one dot per day ---- */
+.habit-today-count {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.habit-grid-wrap {
+  overflow-x: auto;
+}
+.habit-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+.habit-grid th {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding-bottom: 6px;
+}
+.habit-grid th.is-today {
+  color: var(--rust);
+}
+.habit-grid td {
+  padding: 4px 2px;
+  text-align: center;
+}
+.habit-grid-name {
+  text-align: start !important;
+  font-size: 13px;
+  white-space: nowrap;
+  padding-inline-end: 8px !important;
+}
+.habit-grid-icon {
+  margin-inline-end: 5px;
+}
+.habit-streak {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  margin-inline-start: 6px;
+}
+.habit-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--paper-line);
+  background: none;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  cursor: pointer;
+  padding: 0;
+}
+.habit-dot.is-today {
+  border-color: var(--ink-soft);
+}
+.habit-dot.on {
+  background: var(--teal);
+  border-color: var(--teal);
+  color: #fff;
+}
+.habit-icon-picker {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.habit-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0;
+  line-height: 1;
+}
+.habit-icon-btn.active {
+  border-color: var(--ink);
+  background: var(--card);
+}
+
 .card {
   background: var(--card);
   backdrop-filter: blur(16px) saturate(150%);

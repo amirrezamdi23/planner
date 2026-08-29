@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState, useCallback, useRef, type ReactNode } fr
 import {
   ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check,
   Minus, MessageSquare, ListPlus, ArrowRight, History, NotebookPen, Timer, AlarmClock, Music, Wallet,
-  FolderKanban, RefreshCw, Database, type LucideIcon,
+  FolderKanban, RefreshCw, Database, Repeat, type LucideIcon,
 } from 'lucide-react';
 import { LOG_TYPES } from './logTypes';
 import { MOOD_OPTIONS } from './moodOptions';
@@ -22,6 +22,8 @@ import SyncCard from './SyncCard';
 import BackupCard from './BackupCard';
 import BottomNav, { type NavTab } from './BottomNav';
 import DailyReviewCard from './DailyReviewCard';
+import HabitsCard from './HabitsCard';
+import UpcomingCard from './UpcomingCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import TimerCard from './TimerCard';
@@ -494,6 +496,7 @@ export default function App() {
   // Everything except the quick log lives behind the "مرور" tab, one row per
   // card, each opening as its own page.
   const BROWSE_CARDS: { id: string; title: string; Icon: LucideIcon; node: ReactNode }[] = [
+    { id: 'habits', title: 'عادت‌ها', Icon: Repeat, node: <HabitsCard /> },
     { id: 'history', title: 'پیشینه', Icon: History, node: <HistoryCard /> },
     { id: 'dailyreview', title: 'مرور روزانه', Icon: NotebookPen, node: <DailyReviewCard /> },
     { id: 'sleep', title: 'گزارش خواب', Icon: Moon, node: <SleepReportCard refreshSignal={sleepDataVersion} /> },
@@ -531,6 +534,20 @@ export default function App() {
         </div>
         <BareCardContext.Provider value={true}>{openCard.node}</BareCardContext.Provider>
       </div>
+    );
+  }
+
+  if (tab === 'upcoming') {
+    return (
+      <>
+        <div className="wrap page">
+          <div className="page-head">
+            <h1 className="page-title">پیش رو</h1>
+          </div>
+          <UpcomingCard />
+        </div>
+        <BottomNav active={tab} onSelect={onSelectTab} />
+      </>
     );
   }
 

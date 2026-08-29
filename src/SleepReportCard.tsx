@@ -172,10 +172,17 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
         : filter === '7d'
           ? shiftDayKey(today, -6)
           : null;
+  // A row keyed to day D is the night you went to bed on D and woke on D+1,
+  // so the night logged *this morning* is keyed to yesterday. Windowing on
+  // the bed day would then drop it on the first day of a week or month — on
+  // شنبه, "هفته جاری" starts today and last night's row sits on جمعه. Window
+  // on the wake day instead: a night belongs to the period you woke up in,
+  // which is also how it's actually experienced.
   const visible = reports.filter((r) => {
     if (r.day > today) return false;
-    if (filter === 'month') return isInCurrentJalaliMonth(r.day);
-    return cutoff !== null && r.day >= cutoff;
+    const wakeDay = shiftDayKey(r.day, 1);
+    if (filter === 'month') return isInCurrentJalaliMonth(wakeDay);
+    return cutoff !== null && wakeDay >= cutoff;
   });
 
   const avgSleep = circularMeanTime(visible.map((r) => r.sleepTime).filter((t): t is string => !!t));

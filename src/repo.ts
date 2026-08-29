@@ -249,6 +249,23 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
     .map(toLogItem);
 }
 
+// Everything still open, keyed by the day it's actually *for*: a due date
+// wins over the day the item was written on, since that's the day the user
+// needs to see it. Used by the Upcoming view.
+export interface UpcomingItem extends LogItem {
+  onDay: string;
+}
+
+export async function listUpcomingItems(): Promise<UpcomingItem[]> {
+  const recs = await liveByType('log_item');
+  const PLANNABLE: LogItemType[] = ['task', 'event'];
+  return recs
+    .map(toLogItem)
+    .filter((it) => PLANNABLE.includes(it.itemType) && !it.done && !it.failed && !it.parentId)
+    .map((it) => ({ ...it, onDay: it.dueDate ?? it.day }))
+    .sort((a, b) => a.onDay.localeCompare(b.onDay) || a.recId.localeCompare(b.recId));
+}
+
 // All user-authored notes/tasks/events/ideas across every day — the
 // bookkeeping types (sleep/wake/nap/nap_none) are excluded since they're not
 // something the user would browse as "history".
