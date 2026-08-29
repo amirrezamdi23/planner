@@ -101,6 +101,7 @@ export default function App() {
   const [expandedNotesIds, setExpandedNotesIds] = useState<Set<string>>(new Set());
   const [commentOpenId, setCommentOpenId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
+  const [commentEditing, setCommentEditing] = useState(false);
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
@@ -284,12 +285,17 @@ export default function App() {
     setCommentOpenId((cur) => {
       if (cur === it.recId) return null;
       setCommentDraft(it.comment ?? '');
+      setCommentEditing(!it.comment);
       return it.recId;
     });
   }
+  function onStartEditComment(it: LogItem) {
+    setCommentDraft(it.comment ?? '');
+    setCommentEditing(true);
+  }
   async function onSaveComment(recId: string) {
     await setLogComment(recId, commentDraft.trim());
-    setCommentOpenId(null);
+    setCommentEditing(false);
     await reload();
   }
   function onStartEditLog(it: LogItem) {
@@ -851,14 +857,25 @@ export default function App() {
                 </div>
                 {canToggle && commentOpenId === it.recId && (
                   <div className="log-item comment-row">
-                    <input
-                      value={commentDraft}
-                      onChange={(e) => setCommentDraft(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && onSaveComment(it.recId)}
-                      placeholder="یک کامنت کوتاه…"
-                      autoFocus
-                    />
-                    <button onClick={() => onSaveComment(it.recId)}>ثبت</button>
+                    {commentEditing ? (
+                      <>
+                        <input
+                          value={commentDraft}
+                          onChange={(e) => setCommentDraft(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && onSaveComment(it.recId)}
+                          placeholder="یک کامنت کوتاه…"
+                          autoFocus
+                        />
+                        <button onClick={() => onSaveComment(it.recId)}>ثبت</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="comment-text">{it.comment}</span>
+                        <button className="habit-del" onClick={() => onStartEditComment(it)} title="ویرایش">
+                          <Pencil size={13} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
                 </Fragment>

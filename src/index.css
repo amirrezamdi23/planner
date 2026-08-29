@@ -295,6 +295,11 @@ header {
   align-items: center;
   gap: 8px;
 }
+.comment-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
 .comment-row input {
   flex: 1;
   border: 1px solid var(--paper-line);
