@@ -37,6 +37,7 @@ export interface LogItemPayload {
   durationMin?: number; // only used by 'nap'
   notes?: string;
   dueDate?: string; // day-key
+  comment?: string;
 }
 export interface DailyReviewPayload {
   day: string;
@@ -61,6 +62,7 @@ export interface LogItem {
   durationMin?: number;
   notes?: string;
   dueDate?: string;
+  comment?: string;
 }
 
 async function liveByType(type: Rec['type']): Promise<Rec[]> {
@@ -132,6 +134,7 @@ export async function listLogItems(day: string): Promise<LogItem[]> {
         durationMin: p.durationMin,
         notes: p.notes,
         dueDate: p.dueDate,
+        comment: p.comment,
       };
     });
 }
@@ -218,6 +221,7 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
         durationMin: p.durationMin,
         notes: p.notes,
         dueDate: p.dueDate,
+        comment: p.comment,
       };
     });
 }
@@ -249,6 +253,7 @@ export async function listAllLogItems(): Promise<LogItem[]> {
         durationMin: p.durationMin,
         notes: p.notes,
         dueDate: p.dueDate,
+        comment: p.comment,
       };
     });
 
@@ -326,6 +331,17 @@ export async function toggleLogDone(recId: string): Promise<void> {
   await db.records.put({
     ...r,
     payload: { ...p, done: !p.done },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function setLogComment(recId: string, comment: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, comment: comment || undefined },
     updatedAt: new Date().toISOString(),
   });
 }

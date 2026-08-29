@@ -259,6 +259,10 @@ header {
 .habit-del:hover {
   opacity: 1;
 }
+.habit-del.active {
+  color: var(--teal);
+  opacity: 1;
+}
 
 .log-item {
   display: flex;
@@ -286,6 +290,29 @@ header {
 }
 .log-item:last-child {
   border-bottom: none;
+}
+.comment-row {
+  align-items: center;
+  gap: 8px;
+}
+.comment-row input {
+  flex: 1;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: inherit;
+}
+.comment-row button {
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
 }
 .log-item.due-soon {
   background: #f1e5c9;

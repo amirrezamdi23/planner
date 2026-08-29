@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check, Minus } from 'lucide-react';
+import { Fragment, useEffect, useState, useCallback, useRef } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check, Minus, MessageSquare } from 'lucide-react';
 import { LOG_TYPES } from './logTypes';
 import { MOOD_OPTIONS } from './moodOptions';
 import {
@@ -37,6 +37,7 @@ import {
   addNapEntry,
   addNapNone,
   listPendingWithDueDate,
+  setLogComment,
   listProjectCategories,
   listProjects,
   onCategoriesChanged,
@@ -98,6 +99,8 @@ export default function App() {
   const [editFormProjects, setEditFormProjects] = useState<Project[]>([]);
   const [pendingWithDueDate, setPendingWithDueDate] = useState<LogItem[]>([]);
   const [expandedNotesIds, setExpandedNotesIds] = useState<Set<string>>(new Set());
+  const [commentOpenId, setCommentOpenId] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
 
   const [sleepDataVersion, setSleepDataVersion] = useState(0);
 
@@ -275,6 +278,18 @@ export default function App() {
   }
   async function onMigrateToToday(recId: string) {
     await moveLogItem(recId, TODAY);
+    await reload();
+  }
+  function onToggleCommentBox(it: LogItem) {
+    setCommentOpenId((cur) => {
+      if (cur === it.recId) return null;
+      setCommentDraft(it.comment ?? '');
+      return it.recId;
+    });
+  }
+  async function onSaveComment(recId: string) {
+    await setLogComment(recId, commentDraft.trim());
+    setCommentOpenId(null);
     await reload();
   }
   function onStartEditLog(it: LogItem) {
@@ -755,7 +770,8 @@ export default function App() {
               }
 
               return (
-                <div className={rowClass} key={it.recId}>
+                <Fragment key={it.recId}>
+                <div className={rowClass}>
                   {canToggle ? (
                     <button
                       className={'log-check' + (it.done ? ' done' : '')}
@@ -799,6 +815,11 @@ export default function App() {
                       )}
                     </span>
                     {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
+                    {it.comment && (
+                      <div className="pay-sub icon-row">
+                        <MessageSquare size={11} /> {it.comment}
+                      </div>
+                    )}
                   </div>
                   <div className="log-actions">
                     {it.notes && (
@@ -808,6 +829,15 @@ export default function App() {
                         title="نمایش/پنهان‌کردن توضیحات"
                       >
                         <ChevronDown size={14} />
+                      </button>
+                    )}
+                    {canToggle && (
+                      <button
+                        className={'habit-del' + (it.comment ? ' active' : '')}
+                        onClick={() => onToggleCommentBox(it)}
+                        title="کامنت"
+                      >
+                        <MessageSquare size={13} />
                       </button>
                     )}
                     <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
@@ -823,6 +853,19 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+                {canToggle && commentOpenId === it.recId && (
+                  <div className="log-item comment-row">
+                    <input
+                      value={commentDraft}
+                      onChange={(e) => setCommentDraft(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && onSaveComment(it.recId)}
+                      placeholder="یک کامنت کوتاه…"
+                      autoFocus
+                    />
+                    <button onClick={() => onSaveComment(it.recId)}>ثبت</button>
+                  </div>
+                )}
+                </Fragment>
               );
             })}
 
