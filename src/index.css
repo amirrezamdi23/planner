@@ -44,7 +44,7 @@
   --rust: #a63d2f;
   --rust-soft: #f1dcd6;
   --gold: #b8842a;
-  --card: #f3f0e4;
+  --card: rgba(243, 240, 228, 0.42);
   --shadow: 0 1px 0 rgba(36, 35, 32, 0.06);
   --nav-bg: #fbfaf8;
   --nav-active-bg: #fef4ee;
@@ -96,8 +96,8 @@ body,
 body {
   margin: 0;
   background: var(--paper);
-  background-image: linear-gradient(var(--paper-line) 1px, transparent 1px);
-  background-size: 100% 34px;
+  background-image: radial-gradient(circle, var(--paper-line) 1px, transparent 1px);
+  background-size: 22px 22px;
   color: var(--ink);
   font-family: 'IRANSansX', 'Vazirmatn', sans-serif;
   min-height: 100vh;
@@ -125,6 +125,8 @@ header {
 
 .card {
   background: var(--card);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
   border: 1px solid var(--paper-line);
   border-radius: 14px;
   padding: 16px;
