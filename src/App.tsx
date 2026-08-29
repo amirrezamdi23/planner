@@ -1,4 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check, Minus } from 'lucide-react';
+import { LOG_TYPES } from './logTypes';
+import { MOOD_OPTIONS } from './moodOptions';
 import {
   dayKey,
   shiftDayKey,
@@ -10,10 +13,14 @@ import {
   daysBetweenDayKeys,
   todayJalali,
 } from './lib/date';
+import Switch from './Switch';
 import SyncCard from './SyncCard';
+import BackupCard from './BackupCard';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import TimerCard from './TimerCard';
+import AlarmCard from './AlarmCard';
+import MusicCard from './MusicCard';
 import SleepReportCard from './SleepReportCard';
 import HistoryCard from './HistoryCard';
 import Collapsible from './Collapsible';
@@ -23,6 +30,7 @@ import {
   addLogItem,
   editLogItem,
   toggleLogDone,
+  togglePriority,
   deleteLogItem,
   moveLogItem,
   addNapEntry,
@@ -30,6 +38,7 @@ import {
   listPendingWithDueDate,
   listProjectCategories,
   listProjects,
+  onCategoriesChanged,
   listDailyReviewEntries,
   addDailyReviewEntry,
   editDailyReviewEntry,
@@ -44,24 +53,14 @@ import {
 const TODAY = dayKey(0);
 const REVIEW_EDIT_WINDOW_DAYS = 7;
 
-// Symbol + spelled-out label together, always — so the user never has to
-// memorize what "•" vs "○" vs "–" means on their own. Tasks use a tickable
-// checkbox square rather than a bullet, so "this can be checked off" reads
-// at a glance.
-const LOG_TYPES: Array<{ id: LogItemType; mark: string; doneMark?: string; label: string }> = [
-  { id: 'task', mark: '☐', doneMark: '☑', label: 'کار' },
-  { id: 'event', mark: '○', label: 'رویداد' },
-  { id: 'note', mark: '–', label: 'یادداشت' },
-  { id: 'idea', mark: '💡', label: 'ایده' },
-];
-
 export default function App() {
   const [viewedDay, setViewedDay] = useState(TODAY);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
   const [prevDayLogItems, setPrevDayLogItems] = useState<LogItem[]>([]);
   const [logInput, setLogInput] = useState('');
-  const [logType, setLogType] = useState<LogItemType>('task');
-  const [logPriority, setLogPriority] = useState(false);
+  const [logType, setLogType] = useState<LogItemType | null>(null);
+  const [logPriorityPending, setLogPriorityPending] = useState(false);
+  const [holdingPriorityBtn, setHoldingPriorityBtn] = useState(false);
   const [logCategoryId, setLogCategoryId] = useState<string | null>(null);
   const [logProjectId, setLogProjectId] = useState<string | null>(null);
   const [logHasNotes, setLogHasNotes] = useState(false);
@@ -75,6 +74,10 @@ export default function App() {
   const [napDurationInput, setNapDurationInput] = useState('');
   const [prevNapStartInput, setPrevNapStartInput] = useState('');
   const [prevNapDurationInput, setPrevNapDurationInput] = useState('');
+  const [napFormOpen, setNapFormOpen] = useState(false);
+  const [napHasStart, setNapHasStart] = useState(false);
+  const [prevNapFormOpen, setPrevNapFormOpen] = useState(false);
+  const [prevNapHasStart, setPrevNapHasStart] = useState(false);
 
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingLogText, setEditingLogText] = useState('');
@@ -120,15 +123,23 @@ export default function App() {
     setPendingWithDueDate(pending);
   }, [viewedDay, prevDay]);
 
+  const reloadCategories = useCallback(async () => {
+    const [cats, projects] = await Promise.all([listProjectCategories(), listProjects()]);
+    setProjectCategories(cats);
+    setAllProjects(projects);
+  }, []);
+
   useEffect(() => {
     (async () => {
       await reload();
-      const [cats, projects] = await Promise.all([listProjectCategories(), listProjects()]);
-      setProjectCategories(cats);
-      setAllProjects(projects);
+      await reloadCategories();
       setLoading(false);
     })();
-  }, [reload]);
+  }, [reload, reloadCategories]);
+
+  // Categories/projects are managed from ProjectLogCard — pick up changes
+  // made there without requiring a page reload.
+  useEffect(() => onCategoriesChanged(reloadCategories), [reloadCategories]);
 
   useEffect(() => {
     if (!logCategoryId) {
@@ -173,19 +184,19 @@ export default function App() {
   }
 
   async function onAddLog() {
-    if (!logInput.trim()) return;
+    if (!logInput.trim() || !logType) return;
     await addLogItem({
       day: viewedDay,
       text: logInput,
       itemType: logType,
-      priority: logPriority,
+      priority: logPriorityPending,
       categoryId: logCategoryId ?? undefined,
       projectId: logProjectId ?? undefined,
       notes: logHasNotes ? logNotesInput.trim() || undefined : undefined,
       dueDate: logHasDueDate ? logDueDateKey : undefined,
     });
     setLogInput('');
-    setLogPriority(false);
+    setLogPriorityPending(false);
     setLogHasNotes(false);
     setLogNotesInput('');
     setLogHasDueDate(false);
@@ -193,9 +204,67 @@ export default function App() {
     setLogDueDateKey(TODAY);
     await reload();
   }
+
+  // Setting priority before a task even exists: hold the "کار" type tag for
+  // ~600ms and it gradually turns red (see .type-btn.holding-priority CSS);
+  // releasing past that threshold commits logPriorityPending, which is what
+  // onAddLog actually saves. A quick tap still just switches the type.
+  const addPriorityTimerRef = useRef<number | null>(null);
+  const addPriorityFiredRef = useRef(false);
+  function onTypeBtnPointerDown(typeId: LogItemType) {
+    if (typeId !== 'task') return;
+    addPriorityFiredRef.current = false;
+    setHoldingPriorityBtn(true);
+    addPriorityTimerRef.current = window.setTimeout(() => {
+      addPriorityFiredRef.current = true;
+      setHoldingPriorityBtn(false);
+      setLogPriorityPending((v) => !v);
+    }, 600);
+  }
+  function onTypeBtnPointerUp() {
+    setHoldingPriorityBtn(false);
+    if (addPriorityTimerRef.current !== null) {
+      clearTimeout(addPriorityTimerRef.current);
+      addPriorityTimerRef.current = null;
+    }
+  }
+  function onTypeBtnClick(typeId: LogItemType) {
+    if (addPriorityFiredRef.current) {
+      addPriorityFiredRef.current = false;
+      return;
+    }
+    setLogType(typeId);
+  }
   async function onToggleLog(recId: string) {
     await toggleLogDone(recId);
     await reload();
+  }
+
+  // Priority has no separate control — hold a row's mark for ~600ms instead.
+  // longPressFiredRef suppresses the click that follows the pointerup so a
+  // long-press doesn't also toggle the task done.
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressFiredRef = useRef(false);
+  function onMarkPointerDown(recId: string) {
+    longPressFiredRef.current = false;
+    longPressTimerRef.current = window.setTimeout(async () => {
+      longPressFiredRef.current = true;
+      await togglePriority(recId);
+      await reload();
+    }, 600);
+  }
+  function onMarkPointerUp() {
+    if (longPressTimerRef.current !== null) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+  function onMarkClick(e: { preventDefault: () => void }, then: () => void) {
+    if (longPressFiredRef.current) {
+      e.preventDefault();
+      return;
+    }
+    then();
   }
   async function onDeleteLog(recId: string) {
     const isNap = logItems.some((it) => it.recId === recId && it.itemType === 'nap');
@@ -250,10 +319,12 @@ export default function App() {
   }
   async function onLogPrevDayNap() {
     const minutes = parseInt(prevNapDurationInput, 10);
-    if (!prevNapStartInput || !minutes || minutes <= 0) return;
-    await addNapEntry(prevDay, prevNapStartInput, minutes);
+    if (!minutes || minutes <= 0) return;
+    await addNapEntry(prevDay, minutes, prevNapHasStart ? prevNapStartInput || undefined : undefined);
     setPrevNapStartInput('');
     setPrevNapDurationInput('');
+    setPrevNapHasStart(false);
+    setPrevNapFormOpen(false);
     await reload();
     setSleepDataVersion((v) => v + 1);
   }
@@ -274,10 +345,27 @@ export default function App() {
   }
   async function onAddNap() {
     const minutes = parseInt(napDurationInput, 10);
-    if (!napStartInput || !minutes || minutes <= 0) return;
-    await addNapEntry(viewedDay, napStartInput, minutes);
+    if (!minutes || minutes <= 0) return;
+    await addNapEntry(viewedDay, minutes, napHasStart ? napStartInput || undefined : undefined);
     setNapStartInput('');
     setNapDurationInput('');
+    setNapHasStart(false);
+    setNapFormOpen(false);
+    await reload();
+    setSleepDataVersion((v) => v + 1);
+  }
+  async function onNoNapViewedDay() {
+    await addNapNone(viewedDay);
+    await reload();
+    setSleepDataVersion((v) => v + 1);
+  }
+
+  // Morning mood — one entry per day, same "log it once at the start of the
+  // day" spot as sleep/wake, but re-tappable if the user changes their mind.
+  async function onSetMood(moodId: string) {
+    const existing = logItems.find((it) => it.itemType === 'mood');
+    if (existing) await deleteLogItem(existing.recId);
+    await addLogItem({ day: viewedDay, text: moodId, itemType: 'mood', priority: false });
     await reload();
     setSleepDataVersion((v) => v + 1);
   }
@@ -314,18 +402,40 @@ export default function App() {
 
   const sleepEntry = prevDayLogItems.find((it) => it.itemType === 'sleep');
   const wakeEntry = logItems.find((it) => it.itemType === 'wake');
+  const moodEntry = logItems.find((it) => it.itemType === 'mood');
   const napResolvedPrevDay = prevDayLogItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
   const napResolvedViewedDay = logItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
-  const gateStep: 'nap' | 'sleep' | 'wake' | 'unlocked' = !napResolvedPrevDay
-    ? 'nap'
-    : !sleepEntry
-      ? 'sleep'
-      : !wakeEntry
-        ? 'wake'
-        : 'unlocked';
+  const isTodayView = viewedDay === TODAY;
+  // The morning-mood check gates the list the same way sleep/wake do, but
+  // only kicks in from 8am onward on today's page — no point demanding a
+  // "how do you feel this morning" answer before the morning has started,
+  // or retroactively on a past day being reviewed.
+  const moodDue = isTodayView && new Date().getHours() >= 8 && !moodEntry;
+  // The whole nap/sleep/wake/mood gate only starts demanding anything from
+  // 6am onward on today's page — right after midnight the "new day" has
+  // technically started but the person is still awake from the previous
+  // one, so nagging them to log last night's sleep the instant the date
+  // rolls over is backwards. A past day being reviewed is always gated.
+  const gateActive = !isTodayView || new Date().getHours() >= 6;
+  const gateStep: 'nap' | 'sleep' | 'wake' | 'mood' | 'unlocked' = !gateActive
+    ? 'unlocked'
+    : !napResolvedPrevDay
+      ? 'nap'
+      : !sleepEntry
+        ? 'sleep'
+        : !wakeEntry
+          ? 'wake'
+          : moodDue
+            ? 'mood'
+            : 'unlocked';
   const dayUnlocked = gateStep === 'unlocked';
   const taskLogItems = logItems.filter(
-    (it) => it.itemType !== 'sleep' && it.itemType !== 'wake' && it.itemType !== 'nap' && it.itemType !== 'nap_none',
+    (it) =>
+      it.itemType !== 'sleep' &&
+      it.itemType !== 'wake' &&
+      it.itemType !== 'nap' &&
+      it.itemType !== 'nap_none' &&
+      it.itemType !== 'mood',
   );
   // A due-dated item starts surfacing as a reminder 10 days out (yellow),
   // turns urgent inside the last 3 days (red), and once its due date has
@@ -339,6 +449,9 @@ export default function App() {
     return null;
   }
   const reminderItems = pendingWithDueDate.filter((it) => it.day !== viewedDay && dueStatusFor(it) !== null);
+  // Priority is set by long-pressing a row (see onMarkPointerDown below), not
+  // at creation time — sort those to the top instead of a separate control.
+  const sortedTaskLogItems = [...taskLogItems].sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
 
   return (
     <div className="wrap">
@@ -352,14 +465,14 @@ export default function App() {
       <Collapsible title="یادداشت سریع" storageKey="quicklog">
         <div className="day-nav">
           <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, -1))} title="روز قبل">
-            ◂
+            <ChevronRight size={16} />
           </button>
           <span className="day-nav-label">
             {viewedDay === TODAY ? 'امروز — ' : ''}
             {jalaliLabelForDayKey(viewedDay)}
           </span>
           <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, 1))} title="روز بعد">
-            ▸
+            <ChevronLeft size={16} />
           </button>
           {viewedDay !== TODAY && (
             <button className="link-btn" onClick={() => setViewedDay(TODAY)}>
@@ -375,24 +488,37 @@ export default function App() {
                 <div className="empty">
                   قبل از ثبت خواب دیشب، اول بگو دیروز ({jalaliDateOnlyLabel(prevDay)}) چرت زدی یا نه.
                 </div>
-                <div className="add-row">
-                  <button onClick={onNoNapPrevDay}>چرت نزدم</button>
-                </div>
-                <div className="empty" style={{ marginTop: 4 }}>
-                  یا اگه زدی، فقط ساعت شروع و مدتش رو بزن:
-                </div>
-                <div className="add-row">
-                  <input type="time" value={prevNapStartInput} onChange={(e) => setPrevNapStartInput(e.target.value)} />
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="مدت (دقیقه)"
-                    style={{ maxWidth: 100 }}
-                    value={prevNapDurationInput}
-                    onChange={(e) => setPrevNapDurationInput(e.target.value)}
-                  />
-                  <button onClick={onLogPrevDayNap}>ثبت چرت دیروز</button>
-                </div>
+                {!prevNapFormOpen ? (
+                  <div className="add-row">
+                    <button onClick={() => setPrevNapFormOpen(true)}>ثبت</button>
+                    <button className="link-btn" onClick={onNoNapPrevDay}>
+                      چرت نزدم
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="add-row">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="مدت (دقیقه)"
+                        style={{ maxWidth: 100 }}
+                        value={prevNapDurationInput}
+                        onChange={(e) => setPrevNapDurationInput(e.target.value)}
+                      />
+                      <button onClick={onLogPrevDayNap} disabled={!prevNapDurationInput}>
+                        ثبت چرت دیروز
+                      </button>
+                    </div>
+                    <div className="add-row" style={{ alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>زمان شروع</span>
+                      <Switch checked={prevNapHasStart} onChange={setPrevNapHasStart} />
+                      {prevNapHasStart && (
+                        <input type="time" value={prevNapStartInput} onChange={(e) => setPrevNapStartInput(e.target.value)} />
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
             {gateStep === 'sleep' && (
@@ -417,34 +543,73 @@ export default function App() {
                 </div>
               </>
             )}
+            {gateStep === 'mood' && (
+              <>
+                <div className="empty">قبل از دیدن لیست امروز، مودت رو برای صبح ثبت کن.</div>
+                <div className="mood-row">
+                  {MOOD_OPTIONS.map((m) => (
+                    <button
+                      key={m.id}
+                      className="mood-btn"
+                      style={{ background: m.bg, color: m.color, borderColor: m.color }}
+                      onClick={() => onSetMood(m.id)}
+                      title={m.label}
+                    >
+                      <m.Icon size={17} />
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <>
-            <div className="sleep-summary">
-              🌙 {sleepEntry!.text} — ☀️ {wakeEntry!.text}
-            </div>
+            {sleepEntry && wakeEntry && (
+              <div className="sleep-summary icon-row">
+                <Moon size={14} /> {sleepEntry.text} — <Sun size={14} /> {wakeEntry.text}
+              </div>
+            )}
 
             {!napResolvedViewedDay && (
               <Collapsible title="خواب میان‌روزی" storageKey="nap">
-                <div className="add-row">
-                  <input type="time" value={napStartInput} onChange={(e) => setNapStartInput(e.target.value)} />
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="مدت (دقیقه)"
-                    style={{ maxWidth: 100 }}
-                    value={napDurationInput}
-                    onChange={(e) => setNapDurationInput(e.target.value)}
-                  />
-                  <button onClick={onAddNap}>ثبت چرت</button>
-                </div>
+                {!napFormOpen ? (
+                  <div className="add-row">
+                    <button onClick={() => setNapFormOpen(true)}>ثبت</button>
+                    <button className="link-btn" onClick={onNoNapViewedDay}>
+                      چرت نزدم
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="add-row">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="مدت (دقیقه)"
+                        style={{ maxWidth: 100 }}
+                        value={napDurationInput}
+                        onChange={(e) => setNapDurationInput(e.target.value)}
+                      />
+                      <button onClick={onAddNap} disabled={!napDurationInput}>
+                        ثبت چرت
+                      </button>
+                    </div>
+                    <div className="add-row" style={{ alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: 'var(--ink-soft)' }}>زمان شروع</span>
+                      <Switch checked={napHasStart} onChange={setNapHasStart} />
+                      {napHasStart && (
+                        <input type="time" value={napStartInput} onChange={(e) => setNapStartInput(e.target.value)} />
+                      )}
+                    </div>
+                  </>
+                )}
               </Collapsible>
             )}
 
             {reminderItems.length === 0 && taskLogItems.length === 0 && (
               <div className="empty">چیزی ثبت نشده.</div>
             )}
-            {[...reminderItems, ...taskLogItems].map((it) => {
+            {[...reminderItems, ...sortedTaskLogItems].map((it) => {
               const t = LOG_TYPES.find((x) => x.id === it.itemType) ?? LOG_TYPES[0];
               const canToggle = it.itemType === 'task';
               const catObj = categoryOf(it.categoryId);
@@ -454,7 +619,9 @@ export default function App() {
               const dueStatus = dueStatusFor(it);
               const dueDaysLeft = it.dueDate ? daysBetweenDayKeys(viewedDay, it.dueDate) : null;
               const rowClass =
-                'log-item' + (dueStatus === 'red' ? ' due-urgent' : dueStatus === 'yellow' ? ' due-soon' : '');
+                'log-item' +
+                (it.priority ? ' priority' : '') +
+                (dueStatus === 'red' ? ' due-urgent' : dueStatus === 'yellow' ? ' due-soon' : '');
 
               if (isEditing) {
                 return (
@@ -475,7 +642,7 @@ export default function App() {
                             className={'type-btn' + (editingLogType === lt.id ? ' active' : '')}
                             onClick={() => setEditingLogType(lt.id)}
                           >
-                            {lt.mark} {lt.label}
+                            <lt.Icon size={13} /> {lt.label}
                           </button>
                         ))}
                       </div>
@@ -486,60 +653,68 @@ export default function App() {
                           onChange={(_jalali, newDayKey) => setEditingLogDayKey(newDayKey)}
                         />
                       </div>
-                      <div className="cat-select">
-                        <button
-                          className={'cat-btn' + (editingLogCategoryId === null ? ' active' : '')}
-                          style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                          onClick={() => {
-                            setEditingLogCategoryId(null);
-                            setEditingLogProjectId(null);
-                          }}
-                        >
-                          بدون دسته‌بندی
-                        </button>
-                        {projectCategories.map((c) => (
-                          <button
-                            key={c.id}
-                            className={'cat-btn' + (editingLogCategoryId === c.id ? ' active' : '')}
-                            style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
-                            onClick={() => onSelectEditCategory(c.id)}
-                          >
-                            {c.name}
-                          </button>
-                        ))}
-                      </div>
-                      {editingLogCategoryId && editFormProjects.length > 0 && (
-                        <div className="cat-select" style={{ paddingInlineStart: 12 }}>
-                          <button
-                            className={'cat-btn' + (editingLogProjectId === null ? ' active' : '')}
-                            style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                            onClick={() => setEditingLogProjectId(null)}
-                          >
-                            بدون پروژه
-                          </button>
-                          {editFormProjects.map((p) => (
+                      {editingLogType && (
+                        <>
+                          <div className="cat-select">
                             <button
-                              key={p.id}
-                              className={'cat-btn' + (editingLogProjectId === p.id ? ' active' : '')}
-                              onClick={() => setEditingLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                              className={'cat-btn' + (editingLogCategoryId === null ? ' active' : '')}
+                              style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                              onClick={() => {
+                                setEditingLogCategoryId(null);
+                                setEditingLogProjectId(null);
+                              }}
                             >
-                              {p.name}
+                              بدون دسته‌بندی
                             </button>
-                          ))}
-                        </div>
+                            {projectCategories.map((c) => (
+                              <button
+                                key={c.id}
+                                className={'cat-btn' + (editingLogCategoryId === c.id ? ' active' : '')}
+                                style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
+                                onClick={() => onSelectEditCategory(c.id)}
+                              >
+                                {c.name}
+                              </button>
+                            ))}
+                          </div>
+                          {editingLogCategoryId && editFormProjects.length > 0 && (
+                            <div className="cat-select" style={{ paddingInlineStart: 12 }}>
+                              <button
+                                className={'cat-btn' + (editingLogProjectId === null ? ' active' : '')}
+                                style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                                onClick={() => setEditingLogProjectId(null)}
+                              >
+                                بدون پروژه
+                              </button>
+                              {editFormProjects.map((p) => (
+                                <button
+                                  key={p.id}
+                                  className={'cat-btn' + (editingLogProjectId === p.id ? ' active' : '')}
+                                  style={{
+                                    background: categoryOf(editingLogCategoryId ?? undefined)?.bg ?? 'var(--paper)',
+                                    color: categoryOf(editingLogCategoryId ?? undefined)?.color ?? 'var(--ink-soft)',
+                                  }}
+                                  onClick={() => setEditingLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                                >
+                                  {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
                       <div className="type-select">
                         <button
                           className={'type-btn' + (editingLogHasNotes ? ' active' : '')}
                           onClick={() => setEditingLogHasNotes((v) => !v)}
                         >
-                          📝 توضیحات
+                          <FileText size={13} /> توضیحات
                         </button>
                         <button
                           className={'type-btn' + (editingLogHasDueDate ? ' active' : '')}
                           onClick={() => setEditingLogHasDueDate((v) => !v)}
                         >
-                          📅 سررسید
+                          <CalendarDays size={13} /> سررسید
                         </button>
                       </div>
                       {editingLogHasNotes && (
@@ -581,17 +756,27 @@ export default function App() {
                   {canToggle ? (
                     <button
                       className={'log-check' + (it.done ? ' done' : '')}
-                      onClick={() => onToggleLog(it.recId)}
-                      title="برای تیک‌زدن کلیک کن"
+                      onPointerDown={() => onMarkPointerDown(it.recId)}
+                      onPointerUp={onMarkPointerUp}
+                      onPointerLeave={onMarkPointerUp}
+                      onClick={(e) => onMarkClick(e, () => onToggleLog(it.recId))}
+                      title="برای تیک‌زدن کلیک کن، برای اولویت بالا نگه‌دار"
                     >
-                      {it.done ? '✓' : ''}
+                      {it.done && <Check size={13} />}
                     </button>
                   ) : (
-                    <span className="log-mark">{t.mark}</span>
+                    <span
+                      className="log-mark clickable"
+                      onPointerDown={() => onMarkPointerDown(it.recId)}
+                      onPointerUp={onMarkPointerUp}
+                      onPointerLeave={onMarkPointerUp}
+                      title="برای اولویت بالا نگه‌دار"
+                    >
+                      <t.Icon size={15} />
+                    </span>
                   )}
                   <div style={{ flex: 1 }}>
                     <span className={'log-text' + (it.done ? ' done' : '')}>
-                      {it.priority && <span className="prio-badge" title="اولویت بالا">*</span>}
                       {it.text}
                       {catName && (
                         <span
@@ -603,8 +788,8 @@ export default function App() {
                         </span>
                       )}
                       {it.dueDate && (
-                        <span className="pill" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
-                          📅 {jalaliDateOnlyLabel(it.dueDate)}
+                        <span className="pill icon-row" style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineStart: 6 }}>
+                          <CalendarDays size={11} /> {jalaliDateOnlyLabel(it.dueDate)}
                           {dueDaysLeft !== null &&
                             (dueDaysLeft < 0 ? ` — ${Math.abs(dueDaysLeft)} روز گذشته` : ` — ${dueDaysLeft} روز مانده`)}
                         </span>
@@ -612,26 +797,28 @@ export default function App() {
                     </span>
                     {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
                   </div>
-                  {it.notes && (
-                    <button
-                      className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
-                      onClick={() => toggleNotesExpanded(it.recId)}
-                      title="نمایش/پنهان‌کردن توضیحات"
-                    >
-                      ▾
+                  <div className="log-actions">
+                    {it.notes && (
+                      <button
+                        className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
+                        onClick={() => toggleNotesExpanded(it.recId)}
+                        title="نمایش/پنهان‌کردن توضیحات"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    )}
+                    <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
+                      <Pencil size={13} />
                     </button>
-                  )}
-                  <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
-                    ✎
-                  </button>
-                  {it.day !== TODAY && !it.done && (
-                    <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="انتقال به امروز">
-                      ⇥
+                    {it.day !== TODAY && !it.done && (
+                      <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="موکول به امروز">
+                        <Redo2 size={13} />
+                      </button>
+                    )}
+                    <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
+                      <X size={13} />
                     </button>
-                  )}
-                  <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
-                    ✕
-                  </button>
+                  </div>
                 </div>
               );
             })}
@@ -640,63 +827,70 @@ export default function App() {
               {LOG_TYPES.map((t) => (
                 <button
                   key={t.id}
-                  className={'type-btn' + (logType === t.id ? ' active' : '')}
-                  onClick={() => setLogType(t.id)}
+                  className={
+                    'type-btn' +
+                    (logType === t.id ? ' active' : '') +
+                    (t.id === 'task' && holdingPriorityBtn ? ' holding-priority' : '') +
+                    (t.id === 'task' && logPriorityPending ? ' priority-pending' : '')
+                  }
+                  onPointerDown={() => onTypeBtnPointerDown(t.id)}
+                  onPointerUp={onTypeBtnPointerUp}
+                  onPointerLeave={onTypeBtnPointerUp}
+                  onClick={() => onTypeBtnClick(t.id)}
+                  title={t.id === 'task' ? 'برای اولویت بالا نگه‌دار' : undefined}
                 >
-                  {t.mark} {t.label}
-                </button>
-              ))}
-              <button
-                className={'type-btn prio' + (logPriority ? ' active' : '')}
-                onClick={() => setLogPriority((v) => !v)}
-                title="اگه انتخابش کنی، این مورد با علامت * به‌عنوان اولویت بالا مشخص می‌شه"
-              >
-                * اولویت بالا
-              </button>
-            </div>
-
-            <div className="cat-select">
-              <button
-                className={'cat-btn' + (logCategoryId === null ? ' active' : '')}
-                style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                onClick={() => {
-                  setLogCategoryId(null);
-                  setLogProjectId(null);
-                }}
-              >
-                بدون دسته‌بندی
-              </button>
-              {projectCategories.map((c) => (
-                <button
-                  key={c.id}
-                  className={'cat-btn' + (logCategoryId === c.id ? ' active' : '')}
-                  style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
-                  onClick={() => onSelectLogCategory(c.id)}
-                >
-                  {c.name}
+                  <t.Icon size={13} /> {t.label}
                 </button>
               ))}
             </div>
 
-            {logCategoryId && addFormProjects.length > 0 && (
-              <div className="cat-select" style={{ paddingInlineStart: 12 }}>
-                <button
-                  className={'cat-btn' + (logProjectId === null ? ' active' : '')}
-                  style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
-                  onClick={() => setLogProjectId(null)}
-                >
-                  بدون پروژه
-                </button>
-                {addFormProjects.map((p) => (
+            {logType && (
+              <>
+                <div className="cat-select">
                   <button
-                    key={p.id}
-                    className={'cat-btn' + (logProjectId === p.id ? ' active' : '')}
-                    onClick={() => setLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                    className={'cat-btn' + (logCategoryId === null ? ' active' : '')}
+                    style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                    onClick={() => {
+                      setLogCategoryId(null);
+                      setLogProjectId(null);
+                    }}
                   >
-                    {p.name}
+                    بدون دسته‌بندی
                   </button>
-                ))}
-              </div>
+                  {projectCategories.map((c) => (
+                    <button
+                      key={c.id}
+                      className={'cat-btn' + (logCategoryId === c.id ? ' active' : '')}
+                      style={{ background: c.bg ?? 'var(--paper)', color: c.color ?? 'var(--ink-soft)' }}
+                      onClick={() => onSelectLogCategory(c.id)}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+
+                {logCategoryId && addFormProjects.length > 0 && (
+                  <div className="cat-select" style={{ paddingInlineStart: 12 }}>
+                    <button
+                      className={'cat-btn' + (logProjectId === null ? ' active' : '')}
+                      style={{ background: 'var(--paper)', color: 'var(--ink-soft)' }}
+                      onClick={() => setLogProjectId(null)}
+                    >
+                      بدون پروژه
+                    </button>
+                    {addFormProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        className={'cat-btn' + (logProjectId === p.id ? ' active' : '')}
+                        style={{ background: categoryOf(logCategoryId)?.bg ?? 'var(--paper)', color: categoryOf(logCategoryId)?.color ?? 'var(--ink-soft)' }}
+                        onClick={() => setLogProjectId((cur) => (cur === p.id ? null : p.id))}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
 
             <div className="type-select">
@@ -705,13 +899,13 @@ export default function App() {
                 onClick={() => setLogHasNotes((v) => !v)}
                 title="یه کادر توضیحات جداگانه باز می‌شه تا عنوان کوتاه بمونه"
               >
-                📝 توضیحات
+                <FileText size={13} /> توضیحات
               </button>
               <button
                 className={'type-btn' + (logHasDueDate ? ' active' : '')}
                 onClick={() => setLogHasDueDate((v) => !v)}
               >
-                📅 سررسید
+                <CalendarDays size={13} /> سررسید
               </button>
             </div>
             {logHasNotes && (
@@ -741,19 +935,23 @@ export default function App() {
             <div className="add-row">
               <input
                 placeholder={
-                  logType === 'task'
-                    ? 'چه کاری داری؟'
-                    : logType === 'event'
-                      ? 'چه رویدادی؟'
-                      : logType === 'idea'
-                        ? 'چه ایده‌ای؟'
-                        : 'چی می‌خوای یادداشت کنی؟'
+                  logType === null
+                    ? 'اول نوع رو از بالا انتخاب کن'
+                    : logType === 'task'
+                      ? 'چه کاری داری؟'
+                      : logType === 'event'
+                        ? 'چه رویدادی؟'
+                        : logType === 'idea'
+                          ? 'چه ایده‌ای؟'
+                          : 'چی می‌خوای یادداشت کنی؟'
                 }
                 value={logInput}
                 onChange={(e) => setLogInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && onAddLog()}
               />
-              <button onClick={onAddLog}>ثبت</button>
+              <button onClick={onAddLog} disabled={!logInput.trim() || !logType}>
+                ثبت
+              </button>
             </div>
           </>
         )}
@@ -764,14 +962,14 @@ export default function App() {
       <Collapsible title="مرور روزانه" storageKey="dailyreview">
         <div className="day-nav">
           <button className="mini-btn" onClick={() => setReviewDay((d) => shiftDayKey(d, -1))} title="روز قبل">
-            ◂
+            <ChevronRight size={16} />
           </button>
           <span className="day-nav-label">
             {reviewDay === TODAY ? 'برای امروز — ' : 'برای '}
             {jalaliLabelForDayKey(reviewDay)}
           </span>
           <button className="mini-btn" onClick={() => setReviewDay((d) => shiftDayKey(d, 1))} title="روز بعد">
-            ▸
+            <ChevronLeft size={16} />
           </button>
           {reviewDay !== TODAY && (
             <button className="link-btn" onClick={() => setReviewDay(TODAY)}>
@@ -794,7 +992,9 @@ export default function App() {
           style={{ marginTop: 10 }}
           onClick={() => setReviewListOpen((v) => !v)}
         >
-          <span className={'chevron-btn small' + (reviewListOpen ? '' : ' collapsed')}>▾</span>
+          <span className={'chevron-btn small' + (reviewListOpen ? '' : ' collapsed')}>
+            <ChevronDown size={14} />
+          </span>
           {reviewListOpen ? 'پنهان کردن لیست مرورها' : `نمایش لیست مرورها (${reviewEntries.length})`}
         </button>
 
@@ -808,7 +1008,9 @@ export default function App() {
                 const isEditing = reviewEditingId === e.recId;
                 return (
                   <div className="log-item" key={e.recId}>
-                    <span className="log-mark">–</span>
+                    <span className="log-mark">
+                      <Minus size={15} />
+                    </span>
                     <div style={{ flex: 1 }}>
                       <div className="review-meta">
                         <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>
@@ -836,11 +1038,11 @@ export default function App() {
                     </div>
                     {!isEditing && editable && (
                       <button className="habit-del" onClick={() => onStartEditReview(e)} title="ویرایش">
-                        ✎
+                        <Pencil size={13} />
                       </button>
                     )}
                     <button className="habit-del" onClick={() => onDeleteReview(e.recId)} title="حذف">
-                      ✕
+                      <X size={13} />
                     </button>
                   </div>
                 );
@@ -853,11 +1055,17 @@ export default function App() {
 
       <TimerCard />
 
+      <AlarmCard />
+
+      <MusicCard />
+
       <PaymentsCard />
 
       <ProjectLogCard />
 
       <SyncCard onSynced={reload} />
+
+      <BackupCard onImported={reload} />
 
       <div className="footnote">
         اطلاعات همین دستگاه ذخیره می‌شه؛ اگه همگام‌سازی رو تنظیم کنی، بین دستگاه‌هات هم به‌روز می‌مونه.

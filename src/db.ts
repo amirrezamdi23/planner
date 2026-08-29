@@ -11,7 +11,9 @@ export type RecordType =
   | 'payment'
   | 'project_category'
   | 'project'
-  | 'project_log';
+  | 'project_log'
+  | 'alarm'
+  | 'song';
 
 export interface Rec {
   id: string;

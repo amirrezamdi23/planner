@@ -1,4 +1,38 @@
-@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+
+/* Relative paths (not /fonts/...) so Vite bundles+hashes these and rewrites
+   the URLs correctly under both build bases — root-absolute paths would
+   silently 404 under the GitHub Pages build's '/planner/' base. */
+@font-face {
+  font-family: 'IRANSansX';
+  src: url('./assets/fonts/IRANSansXFaNum-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IRANSansX';
+  src: url('./assets/fonts/IRANSansXFaNum-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IRANSansX';
+  src: url('./assets/fonts/IRANSansXFaNum-DemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IRANSansX';
+  src: url('./assets/fonts/IRANSansXFaNum-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IRANSansX';
+  src: url('./assets/fonts/IRANSansXFaNum-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-display: swap;
+}
 
 :root {
   --paper: #eae6d9;
@@ -16,6 +50,38 @@
 
 * {
   box-sizing: border-box;
+  user-select: none;
+  /* Flex/grid items default to min-width:auto, which refuses to shrink
+     below their own content width — in a tight row that pushes text past
+     the card edge, clipping mid-glyph (a joined Persian letter like "ن"
+     ends up rendered in a broken/half state). Zeroing it everywhere lets
+     text wrap instead; anything that needs a real minimum sets its own. */
+  min-width: 0;
+}
+/* Dragging/selecting text is only useful inside actual text-entry fields —
+   everywhere else (buttons, titles, list rows) it's just an accidental
+   long-press artifact on mobile. */
+input,
+textarea {
+  user-select: text;
+}
+
+/* All buttons hold a Lucide icon, text, or both — center them consistently
+   instead of fixing alignment per button class. */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+button svg {
+  flex: 0 0 auto;
+}
+/* For inline (non-button) icon+text pairs — status lines, table headers, etc. */
+.icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 html,
@@ -30,7 +96,7 @@ body {
   background-image: linear-gradient(var(--paper-line) 1px, transparent 1px);
   background-size: 100% 34px;
   color: var(--ink);
-  font-family: 'Vazirmatn', sans-serif;
+  font-family: 'IRANSansX', 'Vazirmatn', sans-serif;
   min-height: 100vh;
 }
 
@@ -89,6 +155,47 @@ header {
 .chevron-btn.collapsed {
   transform: rotate(-90deg);
 }
+/* A card locked open (long-press the chevron) turns the chevron's
+   background black so the locked state itself is visible, not just
+   inferable from the card staying open. */
+.chevron-btn.locked {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 6px;
+}
+.chevron-btn.locked.collapsed {
+  transform: none;
+}
+
+/* Android-style on/off switch, used in place of plain checkboxes for
+   alarm enable/disable and the cancel-capability toggle. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--paper-line);
+  padding: 3px;
+  border: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background-color 0.2s ease;
+}
+.switch.checked {
+  background: var(--teal);
+  justify-content: flex-end;
+}
+.switch:not(.checked) {
+  justify-content: flex-start;
+}
+.switch-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
 .card h2 .tag {
   font-size: 11px;
   font-weight: 600;
@@ -142,7 +249,7 @@ header {
   opacity: 0.4;
   cursor: pointer;
   font-size: 14px;
-  padding: 4px 6px;
+  padding: 4px 3px;
 }
 .habit-del:hover {
   opacity: 1;
@@ -151,9 +258,26 @@ header {
 .log-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 6px;
   padding: 8px 4px;
   border-bottom: 1px dashed var(--paper-line);
+}
+.log-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding-top: 2px;
+}
+/* History rows have no edit/delete/migrate buttons — just an optional notes
+   chevron — so the reserved mark column and gaps can shrink to content,
+   giving the title close to the full card width. */
+.history-row {
+  gap: 4px;
+}
+.history-row .log-mark {
+  width: auto;
+  padding-inline-end: 2px;
 }
 .log-item:last-child {
   border-bottom: none;
@@ -172,12 +296,25 @@ header {
 .log-item.due-urgent .log-mark {
   color: #fff;
 }
+/* Priority (set by long-pressing a row's mark) outranks the due-date
+   coloring above it in source order, since it's a signal the user set
+   deliberately rather than a derived deadline warning. */
+.log-item.priority {
+  background: #e53935;
+  box-shadow: 0 0 0 1px #e53935, 0 0 10px rgba(229, 57, 53, 0.5);
+  border-radius: 8px;
+}
+.log-item.priority .log-text,
+.log-item.priority .pay-sub,
+.log-item.priority .log-mark {
+  color: #fff;
+}
 .log-mark {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 16px;
   width: 20px;
   flex: 0 0 auto;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--ink-soft);
   padding-top: 2px;
   cursor: default;
@@ -214,10 +351,54 @@ header {
   text-decoration: line-through;
   color: var(--ink-soft);
 }
-.prio-badge {
-  color: var(--gold);
-  font-weight: 800;
-  margin-inline-end: 3px;
+/* Exclusive-select icon buttons that start compact and widen to reveal a
+   label when picked — the label span is always in the DOM so max-width can
+   transition it open instead of the text just popping in. */
+.iconpill-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.iconpill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  /* Fixed equal width/height (rather than letting padding+icon size decide)
+     is what actually makes the collapsed pill a true circle with its icon
+     dead-center — padding alone left it slightly egg-shaped. */
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s, width 0.25s ease, padding 0.25s ease;
+}
+.iconpill.expanded {
+  width: auto;
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  padding-block: 9px;
+  padding-inline-start: 9px;
+  padding-inline-end: 14px;
+}
+.iconpill-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: max-width 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
+}
+.iconpill.expanded .iconpill-label {
+  max-width: 160px;
+  opacity: 1;
+  margin-inline-start: 6px;
 }
 
 .type-select {
@@ -241,9 +422,18 @@ header {
   color: var(--paper);
   border-color: var(--ink);
 }
-.type-btn.prio.active {
-  background: var(--gold);
-  border-color: var(--gold);
+/* Setting priority before a task exists: hold the "کار" tag and it eases
+   from black to red over the same ~600ms as the long-press threshold;
+   priority-pending is the committed state that survives after release. */
+.type-btn.holding-priority {
+  background: #e53935;
+  border-color: #e53935;
+  color: #fff;
+  transition: background-color 0.6s ease, border-color 0.6s ease, color 0.6s ease;
+}
+.type-btn.priority-pending {
+  background: #e53935;
+  border-color: #e53935;
   color: #fff;
 }
 
@@ -290,7 +480,6 @@ header {
 .pay-name {
   flex: 1;
   font-size: 14px;
-  min-width: 120px;
 }
 .pay-sub {
   color: var(--ink-soft);
@@ -363,6 +552,99 @@ header {
   color: var(--ink-soft);
   margin-bottom: 10px;
 }
+.music-now-playing {
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.music-seek {
+  width: 100%;
+  margin: 8px 0 2px;
+}
+/* English-style media-player convention: elapsed time at the bar's start,
+   total duration at its end, transport buttons left-to-right — forcing
+   this sub-block to ltr (independent of the page's overall rtl) is what
+   actually gets that layout instead of fighting the page direction with
+   manual left/right overrides on every child. */
+.music-controls-ltr {
+  direction: ltr;
+}
+.music-controls-ltr .mini-btn.active {
+  background: var(--teal);
+}
+.weekday-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.weekday-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.weekday-btn.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+/* جمعه (Friday) — the week's day off — gets a light-red tint so it stands
+   out from the ordinary working days at a glance. Only while unselected;
+   picking it still shows the normal "active" state so the selection itself
+   stays legible. */
+.weekday-btn.friday:not(.active) {
+  background: var(--rust-soft);
+  border-color: var(--rust);
+  color: var(--rust);
+}
+.alarm-day-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-inline-start: 6px;
+}
+.alarm-day-pill {
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink-soft);
+}
+.mood-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.mood-btn {
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  border-radius: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.mood-btn.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #fff;
+}
 .day-nav-label {
   font-size: 13px;
   color: var(--ink-soft);
@@ -392,6 +674,18 @@ header {
   border-radius: 5px;
   padding: 2px 7px;
   font-weight: 700;
+  /* Inline text can be split across a line-wrap at the browser's
+     discretion — for a small pill that means the background box itself
+     gets torn in half instead of the whole tag flowing to the next line.
+     inline-block plus no-wrap forces the tag to move as one unit. */
+  display: inline-block;
+  white-space: nowrap;
+}
+/* A checked-off item's line-through must stop at the title text — a
+   category/project or due-date tag riding along inside .log-text
+   shouldn't visually look "done" too. */
+.log-text.done .pill {
+  text-decoration: none;
 }
 .review-meta {
   display: flex;
@@ -447,7 +741,14 @@ header {
   font-size: 14px;
   color: var(--ink);
 }
-.add-row button {
+/* :not(.switch) is load-bearing, not decoration — `.add-row button` is a
+   more specific selector than `.switch`, so without the exclusion this
+   rule's padding/background/radius win over the switch's own and squash
+   its 16px round thumb into an oval. That's why switches inside a
+   .log-item row rendered correctly while identical ones inside an
+   .add-row did not. Any future generic `<container> button` rule needs
+   the same exclusion. */
+.add-row button:not(.switch) {
   border: none;
   background: var(--ink);
   color: var(--paper);
@@ -458,7 +759,7 @@ header {
   cursor: pointer;
   white-space: nowrap;
 }
-.add-row button:hover {
+.add-row button:not(.switch):hover {
   background: var(--teal);
 }
 
@@ -505,10 +806,71 @@ textarea.review {
   margin-top: 20px;
 }
 
+.sleep-avg-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.sleep-avg-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.sleep-avg-cols {
+  display: flex;
+  gap: 16px;
+}
+.sleep-avg-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* pan-y lives here, not on the rows: the CSS spec excludes table rows from
+   touch-action entirely, so declaring it on a <tr> is silently ignored and
+   a sideways drag stays eligible to scroll this wrapper instead of reaching
+   the swipe-to-edit handlers. On this block box it actually applies. */
+.sleep-table-wrap {
+  overflow-x: auto;
+  touch-action: pan-y;
+}
 .sleep-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
+}
+.sleep-table tbody tr.editing {
+  background: var(--teal-soft);
+}
+/* A row in edit mode swaps two text cells for two time pickers, which on
+   Android render a wide "12:30 AM" — left at their natural size they push
+   the duration and mood columns off the card. Tightening the inputs and
+   the row's padding keeps the whole row on screen instead. */
+.sleep-table tbody tr.editing td {
+  padding: 5px 3px;
+}
+.sleep-time-input {
+  width: 72px;
+  max-width: 72px;
+  font-family: inherit;
+  font-size: 10.5px;
+  padding: 3px 2px;
+  border: 1px solid var(--paper-line);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.sleep-hint {
+  color: var(--ink-soft);
+  font-size: 11px;
+  padding: 8px 4px 0;
+  text-align: center;
 }
 .sleep-table th,
 .sleep-table td {

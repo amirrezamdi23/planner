@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Pencil, X, ChevronLeft, Minus } from 'lucide-react';
 import { dayKey, jalaliLabelForDayKey } from './lib/date';
 import { CATEGORY_PALETTE, DEFAULT_SWATCH, type ColorSwatch } from './palette';
 import Collapsible from './Collapsible';
@@ -252,10 +253,10 @@ export default function ProjectLogCard() {
                   {c.name}
                 </span>
                 <button className="habit-del" onClick={() => onStartEditCategory(c)} title="ویرایش">
-                  ✎
+                  <Pencil size={13} />
                 </button>
                 <button className="habit-del" onClick={() => onDeleteCategory(c.recId)} title="حذف">
-                  ✕
+                  <X size={13} />
                 </button>
               </>
             )}
@@ -282,7 +283,7 @@ export default function ProjectLogCard() {
     return (
       <Collapsible title="دسته‌بندی" tag={selectedCategory.name} storageKey="projectlog">
         <button className="link-btn" onClick={backToCategories}>
-          ◂ بازگشت به دسته‌بندی‌ها
+          <ChevronLeft size={14} /> بازگشت به دسته‌بندی‌ها
         </button>
 
         <div style={{ marginTop: 10 }}>
@@ -324,10 +325,10 @@ export default function ProjectLogCard() {
                     ))}
                   </select>
                   <button className="habit-del" onClick={() => onStartEditProject(p)} title="ویرایش">
-                    ✎
+                    <Pencil size={13} />
                   </button>
                   <button className="habit-del" onClick={() => onDeleteProject(p.recId)} title="حذف">
-                    ✕
+                    <X size={13} />
                   </button>
                 </>
               )}
@@ -351,7 +352,7 @@ export default function ProjectLogCard() {
   return (
     <Collapsible title="دسته‌بندی" tag={`${selectedCategory.name} / ${selectedProject.name}`} storageKey="projectlog">
       <button className="link-btn" onClick={backToProjects}>
-        ◂ بازگشت به لیست پروژه‌ها
+        <ChevronLeft size={14} /> بازگشت به لیست پروژه‌ها
       </button>
 
       <div className="proj-divider" />
@@ -361,7 +362,7 @@ export default function ProjectLogCard() {
           <div className="last-entry-row">
             <div className="last-entry-text">{last.text}</div>
             <button className="habit-del" onClick={() => onDeleteEntry(last.recId)} title="حذف">
-              ✕
+              <X size={13} />
             </button>
           </div>
         </div>
@@ -373,13 +374,15 @@ export default function ProjectLogCard() {
         <div className="proj-history">
           {rest.map((e) => (
             <div className="log-item" key={e.recId}>
-              <span className="log-mark">–</span>
+              <span className="log-mark">
+                <Minus size={15} />
+              </span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, color: 'var(--ink-soft)' }}>{jalaliLabelForDayKey(e.day)}</div>
                 <span className="log-text">{e.text}</span>
               </div>
               <button className="habit-del" onClick={() => onDeleteEntry(e.recId)} title="حذف">
-                ✕
+                <X size={13} />
               </button>
             </div>
           ))}

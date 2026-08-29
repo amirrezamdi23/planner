@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { AlarmClock, Music } from 'lucide-react';
 import Collapsible from './Collapsible';
+import Switch from './Switch';
 import { getTimerSound, setTimerSound, clearTimerSound } from './db';
-import { scheduleAlarm, cancelAlarm, TIMER_ALARM_IDS } from './lib/alarm';
-
-const STAGE_COUNT = 3;
+import { scheduleAlarm, cancelAlarm, timerAlarmId } from './lib/alarm';
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -13,13 +13,20 @@ function formatClock(ms: number): string {
 }
 
 export default function TimerCard() {
+  const [stageCountInput, setStageCountInput] = useState('3');
   const [durationsMin, setDurationsMin] = useState<string[]>(['25', '5', '10']);
+  const [lockCancel, setLockCancel] = useState(false);
   const [stageIndex, setStageIndex] = useState(-1); // -1 = idle / setup screen
   const [endAt, setEndAt] = useState<number | null>(null);
   const [remainingMs, setRemainingMs] = useState(0);
   const [ringing, setRinging] = useState(false);
   const [soundName, setSoundName] = useState<string | null>(null);
   const [soundUrl, setSoundUrl] = useState<string | null>(null);
+
+  // Captured at start so mid-run the setup screen's own state can't affect
+  // an already-running timer.
+  const activeStageCountRef = useRef(0);
+  const activeLockRef = useRef(false);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const ringIntervalRef = useRef<number | null>(null);
@@ -114,6 +121,16 @@ export default function TimerCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endAt, ringing]);
 
+  function onStageCountChange(val: string) {
+    setStageCountInput(val);
+    const n = Math.min(20, Math.max(1, parseInt(val, 10) || 1));
+    setDurationsMin((prev) => {
+      const next = prev.slice(0, n);
+      while (next.length < n) next.push('10');
+      return next;
+    });
+  }
+
   function setDuration(i: number, val: string) {
     setDurationsMin((prev) => prev.map((d, idx) => (idx === i ? val : d)));
   }
@@ -127,15 +144,15 @@ export default function TimerCard() {
     // Hand this stage to the OS as well, so it still rings if the app gets
     // backgrounded. Inert on the web; see lib/alarm.ts.
     scheduleAlarm({
-      id: TIMER_ALARM_IDS[idx],
+      id: timerAlarmId(idx),
       at: new Date(endsAt),
       title: 'تایمر',
-      body: `مرحله ${idx + 1} از ${STAGE_COUNT} تموم شد`,
+      body: `مرحله ${idx + 1} از ${activeStageCountRef.current} تموم شد`,
     });
   }
 
   function cancelAllAlarms() {
-    for (const id of TIMER_ALARM_IDS) cancelAlarm(id);
+    for (let i = 0; i < activeStageCountRef.current; i++) cancelAlarm(timerAlarmId(i));
   }
 
   function onStart() {
@@ -148,14 +165,16 @@ export default function TimerCard() {
         .then(() => audioRef.current?.pause())
         .catch(() => {});
     }
+    activeStageCountRef.current = durationsMin.length;
+    activeLockRef.current = lockCancel;
     startStage(0);
   }
 
   function onDismissRing() {
     stopRinging();
     setRinging(false);
-    cancelAlarm(TIMER_ALARM_IDS[stageIndex]);
-    if (stageIndex < STAGE_COUNT - 1) {
+    cancelAlarm(timerAlarmId(stageIndex));
+    if (stageIndex < activeStageCountRef.current - 1) {
       startStage(stageIndex + 1);
     } else {
       setStageIndex(-1);
@@ -164,6 +183,7 @@ export default function TimerCard() {
   }
 
   function onCancel() {
+    if (activeLockRef.current) return;
     stopRinging();
     setRinging(false);
     cancelAllAlarms();
@@ -196,34 +216,56 @@ export default function TimerCard() {
     audioRef.current.loop = false;
     audioRef.current.currentTime = 0;
     audioRef.current.play().catch(() => {});
-    window.setTimeout(() => audioRef.current?.pause(), 4000);
+    window.setTimeout(() => audioRef.current?.pause(), 15000);
   }
 
   return (
-    <Collapsible title="تایمر سه‌مرحله‌ای" storageKey="timer3">
+    <Collapsible title="تایمر چندمرحله‌ای" storageKey="timer3">
       <audio ref={audioRef} src={soundUrl ?? undefined} style={{ display: 'none' }} />
       {stageIndex === -1 ? (
         <>
           <div className="empty">
             هر مرحله که تموم بشه زنگ می‌خوره؛ وقتی زنگ رو قطع کنی، مرحله‌ی بعد خودش شروع می‌شه.
           </div>
-          {[0, 1, 2].map((i) => (
+          <div className="add-row">
+            <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>تعداد مرحله</span>
+            <input
+              type="number"
+              min="1"
+              max="20"
+              style={{ maxWidth: 80 }}
+              value={stageCountInput}
+              onChange={(e) => onStageCountChange(e.target.value)}
+            />
+          </div>
+          {durationsMin.map((d, i) => (
             <div className="add-row" key={i}>
               <span style={{ minWidth: 64, fontSize: 13, color: 'var(--ink-soft)' }}>مرحله {i + 1}</span>
               <input
                 type="number"
                 min="1"
                 style={{ maxWidth: 80 }}
-                value={durationsMin[i]}
+                value={d}
                 onChange={(e) => setDuration(i, e.target.value)}
               />
               <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>دقیقه</span>
             </div>
           ))}
 
+          <div className="add-row" style={{ alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>با شروع تایمر، امکان لغو تا پایان تمام مراحل نباشه</span>
+            <Switch checked={lockCancel} onChange={setLockCancel} />
+          </div>
+
           <div className="add-row">
-            <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-soft)' }}>
-              {soundName ? `🎵 زنگ دلخواه: ${soundName}` : 'زنگ پیش‌فرض (بوق ساده)'}
+            <span className="icon-row" style={{ flex: 1, fontSize: 13, color: 'var(--ink-soft)' }}>
+              {soundName ? (
+                <>
+                  <Music size={13} /> زنگ دلخواه: {soundName}
+                </>
+              ) : (
+                'زنگ پیش‌فرض (بوق ساده)'
+              )}
             </span>
           </div>
           <div className="add-row">
@@ -249,13 +291,17 @@ export default function TimerCard() {
         </>
       ) : (
         <div style={{ textAlign: 'center', padding: '8px 0' }}>
-          <div className="day-nav-label">مرحله {stageIndex + 1} از {STAGE_COUNT}</div>
+          <div className="day-nav-label">
+            مرحله {stageIndex + 1} از {activeStageCountRef.current}
+          </div>
           {ringing ? (
             <>
-              <div style={{ fontSize: 40, margin: '10px 0' }}>⏰</div>
+              <div style={{ margin: '10px 0', display: 'flex', justifyContent: 'center' }}>
+                <AlarmClock size={40} />
+              </div>
               <div style={{ marginBottom: 12 }}>این مرحله تموم شد!</div>
               <button className="mini-btn" onClick={onDismissRing}>
-                {stageIndex < STAGE_COUNT - 1 ? 'قطع زنگ و شروع مرحله‌ی بعد' : 'قطع زنگ'}
+                {stageIndex < activeStageCountRef.current - 1 ? 'قطع زنگ و شروع مرحله‌ی بعد' : 'قطع زنگ'}
               </button>
             </>
           ) : (
@@ -263,9 +309,11 @@ export default function TimerCard() {
               <div style={{ fontSize: 36, fontFamily: "'JetBrains Mono', monospace", margin: '10px 0' }}>
                 {formatClock(remainingMs)}
               </div>
-              <button className="link-btn" onClick={onCancel}>
-                لغو تایمر
-              </button>
+              {!activeLockRef.current && (
+                <button className="link-btn" onClick={onCancel}>
+                  لغو تایمر
+                </button>
+              )}
             </>
           )}
         </div>

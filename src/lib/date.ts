@@ -190,6 +190,14 @@ export function jalaliDateOnlyLabel(key: string): string {
   return `${jd} ${JALALI_MONTHS[jm - 1]} ${jy}`;
 }
 
+// Compact year/month/day form for tables where the full month name (as in
+// jalaliDateOnlyLabel) is too wide — e.g. "1405/6/5" for 5 شهریور 1405.
+export function jalaliSlashDateForDayKey(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const [jy, jm, jd] = gregorianToJalali(y, m, d);
+  return `${jy}/${jm}/${jd}`;
+}
+
 export function jalaliOrdinalDay(day: number): string {
   return day === 1 ? 'اول' : `${day} اُم`;
 }

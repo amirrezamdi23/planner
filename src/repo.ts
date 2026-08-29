@@ -1,6 +1,21 @@
 import db, { makeRecord, type Rec } from './db';
 import { recurringPaymentCycle, jalaliCycleKey, shiftDayKey } from './lib/date';
 
+// Categories/projects are edited from ProjectLogCard but read by other cards
+// (quicklog's add/edit forms, HistoryCard) that each keep their own local
+// copy loaded once on mount — without this, a category added in one card
+// stays invisible in the others until a full page reload.
+const CATEGORIES_CHANGED_EVENT = 'planner:categories-changed';
+
+function notifyCategoriesChanged(): void {
+  window.dispatchEvent(new Event(CATEGORIES_CHANGED_EVENT));
+}
+
+export function onCategoriesChanged(handler: () => void): () => void {
+  window.addEventListener(CATEGORIES_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(CATEGORIES_CHANGED_EVENT, handler);
+}
+
 // ---------- payload shapes ----------
 export interface HabitPayload {
   name: string;
@@ -10,7 +25,7 @@ export interface HabitCheckPayload {
   habitId: string;
   day: string;
 }
-export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake' | 'nap' | 'nap_none';
+export type LogItemType = 'task' | 'event' | 'note' | 'idea' | 'sleep' | 'wake' | 'nap' | 'nap_none' | 'mood';
 export interface LogItemPayload {
   day: string;
   text: string;
@@ -210,12 +225,16 @@ export async function listPendingWithDueDate(): Promise<LogItem[]> {
 // All user-authored notes/tasks/events/ideas across every day — the
 // bookkeeping types (sleep/wake/nap/nap_none) are excluded since they're not
 // something the user would browse as "history".
+//
+// Note: entries journaled per-project in ProjectLogCard live in their own
+// record type ('project_log', not 'log_item') because they're keyed by
+// project rather than by day-list — folded in here too (tagged as 'note')
+// so History/export doesn't silently miss them.
 export async function listAllLogItems(): Promise<LogItem[]> {
   const recs = await liveByType('log_item');
   const NOTE_TYPES: LogItemType[] = ['task', 'event', 'note', 'idea'];
-  return recs
+  const quickItems: LogItem[] = recs
     .filter((r) => NOTE_TYPES.includes((r.payload as LogItemPayload).itemType))
-    .sort((a, b) => b.id.localeCompare(a.id))
     .map((r) => {
       const p = r.payload as LogItemPayload;
       return {
@@ -232,15 +251,38 @@ export async function listAllLogItems(): Promise<LogItem[]> {
         dueDate: p.dueDate,
       };
     });
+
+  const projectRecs = await liveByType('project');
+  const categoryByProjectId = new Map(
+    projectRecs.map((r) => [r.id, (r.payload as ProjectPayload).categoryId]),
+  );
+  const projectLogRecs = await liveByType('project_log');
+  const projectItems: LogItem[] = projectLogRecs.map((r) => {
+    const p = r.payload as ProjectLogPayload;
+    return {
+      recId: r.id,
+      day: p.day,
+      text: p.text,
+      done: false,
+      itemType: 'note',
+      priority: false,
+      categoryId: categoryByProjectId.get(p.projectId),
+      projectId: p.projectId,
+    };
+  });
+
+  return [...quickItems, ...projectItems].sort((a, b) => b.recId.localeCompare(a.recId));
 }
 
 // Midday naps: same time-log idea as sleep/wake, but with a duration too.
-export async function addNapEntry(day: string, startTime: string, durationMin: number): Promise<void> {
-  if (!startTime || durationMin <= 0) return;
+// The start time is optional — the user only has to say how long they
+// napped, and can add when it started if they want to.
+export async function addNapEntry(day: string, durationMin: number, startTime?: string): Promise<void> {
+  if (durationMin <= 0) return;
   await db.records.put(
     makeRecord('log_item', {
       day,
-      text: startTime,
+      text: startTime ?? '',
       done: false,
       itemType: 'nap',
       priority: false,
@@ -257,6 +299,26 @@ export async function addNapNone(day: string): Promise<void> {
   );
 }
 
+// Lets SleepReportCard's swipe-to-edit fix a mis-typed sleep/wake time after
+// the fact, without going through the gate flow again.
+export async function editSleepTime(day: string, time: string): Promise<void> {
+  if (!time) return;
+  const recs = await liveByType('log_item');
+  const r = recs.find((r) => (r.payload as LogItemPayload).day === day && (r.payload as LogItemPayload).itemType === 'sleep');
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
+}
+
+export async function editWakeTime(day: string, time: string): Promise<void> {
+  if (!time) return;
+  const recs = await liveByType('log_item');
+  const r = recs.find((r) => (r.payload as LogItemPayload).day === day && (r.payload as LogItemPayload).itemType === 'wake');
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
+}
+
 export async function toggleLogDone(recId: string): Promise<void> {
   const r = await db.records.get(recId);
   if (!r) return;
@@ -264,6 +326,17 @@ export async function toggleLogDone(recId: string): Promise<void> {
   await db.records.put({
     ...r,
     payload: { ...p, done: !p.done },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function togglePriority(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as LogItemPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, priority: !p.priority },
     updatedAt: new Date().toISOString(),
   });
 }
@@ -300,12 +373,14 @@ export interface SleepDayReport {
   napTotalMin: number;
   napNone: boolean;
   totalSleepMin?: number; // night sleep + naps, the day's real total
+  mood?: string; // morning-mood id, logged the same day as the wake entry
 }
 
 export async function listSleepReports(): Promise<SleepDayReport[]> {
   const recs = await liveByType('log_item');
   const sleeps = new Map<string, string>();
   const wakes = new Map<string, string>();
+  const moods = new Map<string, string>();
   const naps = new Map<string, { recId: string; start: string; durationMin: number }[]>();
   const napNoneDays = new Set<string>();
 
@@ -313,6 +388,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
     const p = r.payload as LogItemPayload;
     if (p.itemType === 'sleep') sleeps.set(p.day, p.text);
     else if (p.itemType === 'wake') wakes.set(p.day, p.text);
+    else if (p.itemType === 'mood') moods.set(p.day, p.text);
     else if (p.itemType === 'nap') {
       const arr = naps.get(p.day) ?? [];
       arr.push({ recId: r.id, start: p.text, durationMin: p.durationMin ?? 0 });
@@ -365,6 +441,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
       napTotalMin,
       napNone: napNoneDays.has(day),
       totalSleepMin,
+      mood: moods.get(nextDay),
     });
   }
   return result.sort((a, b) => b.day.localeCompare(a.day));
@@ -414,9 +491,12 @@ export async function deleteDailyReviewEntry(recId: string): Promise<void> {
 
 // ---------- payments ----------
 export type PaymentKind = 'recurring' | 'once';
+// What the payment actually is — separate from `kind` (how often it recurs).
+export type PaymentType = 'check' | 'installment' | 'debt';
 export interface PaymentPayload {
   name: string;
   kind: PaymentKind;
+  payType?: PaymentType; // optional so payments created before this field existed still load
   dueDayJalali?: number; // for 'recurring': day of the Jalali month, 1-31
   dueDate?: string; // for 'once': a day-key
   paid: boolean;
@@ -426,6 +506,7 @@ export interface Payment {
   recId: string;
   name: string;
   kind: PaymentKind;
+  payType?: PaymentType;
   dueDayJalali?: number;
   dueDate?: string;
   paid: boolean;
@@ -444,6 +525,7 @@ export async function listPayments(): Promise<Payment[]> {
 
 export async function addPayment(
   name: string,
+  payType: PaymentType,
   kind: PaymentKind,
   dueDayJalali?: number,
   dueDate?: string,
@@ -453,6 +535,7 @@ export async function addPayment(
     makeRecord('payment', {
       name: name.trim(),
       kind,
+      payType,
       dueDayJalali,
       dueDate,
       paid: false,
@@ -481,6 +564,25 @@ export async function advanceRecurringPayment(recId: string): Promise<void> {
   await db.records.put({
     ...r,
     payload: { ...p, paidThroughCycle: jalaliCycleKey(cycle) },
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function editPayment(
+  recId: string,
+  name: string,
+  payType: PaymentType,
+  kind: PaymentKind,
+  dueDayJalali?: number,
+  dueDate?: string,
+): Promise<void> {
+  if (!name.trim()) return;
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as PaymentPayload;
+  await db.records.put({
+    ...r,
+    payload: { ...p, name: name.trim(), payType, kind, dueDayJalali, dueDate },
     updatedAt: new Date().toISOString(),
   });
 }
@@ -520,6 +622,7 @@ export async function listProjectCategories(): Promise<ProjectCategory[]> {
 export async function addProjectCategory(name: string, color?: string, bg?: string): Promise<void> {
   if (!name.trim()) return;
   await db.records.put(makeRecord('project_category', { name: name.trim(), color, bg } as ProjectCategoryPayload));
+  notifyCategoriesChanged();
 }
 
 export async function editProjectCategory(recId: string, name: string, color?: string, bg?: string): Promise<void> {
@@ -531,6 +634,7 @@ export async function editProjectCategory(recId: string, name: string, color?: s
     payload: { name: name.trim(), color, bg } as ProjectCategoryPayload,
     updatedAt: new Date().toISOString(),
   });
+  notifyCategoriesChanged();
 }
 
 // Deleting a category cascades to its projects and their log entries, so
@@ -551,6 +655,7 @@ export async function deleteProjectCategory(recId: string): Promise<void> {
       }
     }
   }
+  notifyCategoriesChanged();
 }
 
 // ---------- project log ----------
@@ -592,6 +697,7 @@ export async function listProjects(categoryId?: string): Promise<Project[]> {
 export async function addProject(name: string, categoryId: string): Promise<void> {
   if (!name.trim() || !categoryId) return;
   await db.records.put(makeRecord('project', { name: name.trim(), categoryId } as ProjectPayload));
+  notifyCategoriesChanged();
 }
 
 export async function moveProjectToCategory(recId: string, categoryId: string): Promise<void> {
@@ -604,6 +710,7 @@ export async function moveProjectToCategory(recId: string, categoryId: string): 
     payload: { ...p, categoryId },
     updatedAt: new Date().toISOString(),
   });
+  notifyCategoriesChanged();
 }
 
 export async function editProject(recId: string, name: string): Promise<void> {
@@ -616,6 +723,7 @@ export async function editProject(recId: string, name: string): Promise<void> {
     payload: { ...p, name: name.trim() },
     updatedAt: new Date().toISOString(),
   });
+  notifyCategoriesChanged();
 }
 
 // Deleting a project cascades to its log entries.
@@ -630,6 +738,7 @@ export async function deleteProject(recId: string): Promise<void> {
       await db.records.put({ ...l, deleted: true, updatedAt: now });
     }
   }
+  notifyCategoriesChanged();
 }
 
 // One-time, idempotent migration: older projects were created before
@@ -681,9 +790,124 @@ export async function addProjectLogEntry(projectId: string, day: string, text: s
   await db.records.put(
     makeRecord('project_log', { projectId, day, text: text.trim() } as ProjectLogPayload),
   );
+  // HistoryCard folds project-log entries into its list too — reuse the same
+  // pub/sub so a newly journaled entry shows up there without a page reload.
+  notifyCategoriesChanged();
 }
 
 export async function deleteProjectLogEntry(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+  notifyCategoriesChanged();
+}
+
+// ---------- clock alarms ----------
+// Samsung-style: pick weekdays to repeat on, a first-stage time, how many
+// stages, and the gap between them — each stage becomes its own weekly-
+// repeating OS notification (see lib/alarm.ts's clockAlarmId), so a missed
+// first stage still gets a second/third nudge without the app needing to be
+// open in between.
+export interface AlarmPayload {
+  name: string;
+  weekdays: number[]; // JS Date#getDay() values, 0=Sunday..6=Saturday
+  time: string; // "HH:MM", the first stage
+  stageCount: number;
+  intervalMin: number;
+  lockCancel: boolean;
+  enabled: boolean;
+}
+export interface Alarm {
+  recId: string;
+  name: string;
+  weekdays: number[];
+  time: string;
+  stageCount: number;
+  intervalMin: number;
+  lockCancel: boolean;
+  enabled: boolean;
+}
+
+export async function listAlarms(): Promise<Alarm[]> {
+  const recs = await liveByType('alarm');
+  return recs
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((r) => ({ recId: r.id, ...(r.payload as AlarmPayload) }));
+}
+
+export async function addAlarm(input: Omit<AlarmPayload, 'enabled'>): Promise<string> {
+  const rec = makeRecord('alarm', { ...input, enabled: true } as AlarmPayload);
+  await db.records.put(rec);
+  return rec.id;
+}
+
+export async function setAlarmEnabled(recId: string, enabled: boolean): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as AlarmPayload;
+  await db.records.put({ ...r, payload: { ...p, enabled }, updatedAt: new Date().toISOString() });
+}
+
+export async function deleteAlarm(recId: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
+}
+
+// ---------- music player songs ----------
+// Metadata + URL only — the audio itself is never downloaded or cached to
+// disk by this app; MusicPlayer (native) streams straight from `url`.
+export interface SongPayload {
+  title: string;
+  artist: string;
+  url: string;
+}
+export interface Song {
+  recId: string;
+  title: string;
+  artist: string;
+  url: string;
+}
+
+export async function listSongs(): Promise<Song[]> {
+  const recs = await liveByType('song');
+  return recs
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((r) => ({ recId: r.id, ...(r.payload as SongPayload) }));
+}
+
+// Only the link is entered by hand — the title is derived from the URL's
+// filename so the add form stays a single field.
+function deriveTitleFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const last = u.pathname.split('/').filter(Boolean).pop() ?? url;
+    const decoded = decodeURIComponent(last);
+    return decoded.replace(/\.[a-zA-Z0-9]+$/, '').replace(/[_+]/g, ' ').trim() || url;
+  } catch {
+    return url;
+  }
+}
+
+export async function addSong(url: string): Promise<string> {
+  const trimmed = url.trim();
+  const rec = makeRecord('song', { title: deriveTitleFromUrl(trimmed), artist: '', url: trimmed } as SongPayload);
+  await db.records.put(rec);
+  return rec.id;
+}
+
+export async function editSong(recId: string, url: string): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const trimmed = url.trim();
+  await db.records.put({
+    ...r,
+    payload: { title: deriveTitleFromUrl(trimmed), artist: '', url: trimmed } as SongPayload,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deleteSong(recId: string): Promise<void> {
   const r = await db.records.get(recId);
   if (!r) return;
   await db.records.put({ ...r, deleted: true, updatedAt: new Date().toISOString() });
