@@ -1069,7 +1069,10 @@ export default function App() {
                       <button
                         key={ph.id}
                         className={'cat-btn' + (logPhaseId === ph.id ? ' active' : '')}
-                        style={{ background: categoryOf(logCategoryId)?.bg ?? 'var(--paper)', color: categoryOf(logCategoryId)?.color ?? 'var(--ink-soft)' }}
+                        style={{
+                          background: categoryOf(logCategoryId ?? undefined)?.bg ?? 'var(--paper)',
+                          color: categoryOf(logCategoryId ?? undefined)?.color ?? 'var(--ink-soft)',
+                        }}
                         onClick={() => setLogPhaseId((cur) => (cur === ph.id ? null : ph.id))}
                       >
                         {ph.name}
