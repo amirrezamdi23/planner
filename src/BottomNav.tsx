@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NotebookPen, History, Timer, Music, Menu, type LucideIcon } from 'lucide-react';
+import { CalendarDays, Inbox, CalendarClock, Menu, type LucideIcon } from 'lucide-react';
 
 interface NavItem {
   id: string;
@@ -8,12 +8,14 @@ interface NavItem {
   icon: LucideIcon;
 }
 
+// 4 tabs mirroring a familiar reference layout (Inbox / Today / Upcoming /
+// Browse), Persian-labeled and remapped onto this app's own sections —
+// still pure scroll shortcuts, not separate routes (see App.tsx anchors).
 const ITEMS: NavItem[] = [
-  { id: 'today', targetId: 'section-today', label: 'امروز', icon: NotebookPen },
-  { id: 'history', targetId: 'section-history', label: 'پیشینه', icon: History },
-  { id: 'tools', targetId: 'section-tools', label: 'ابزار', icon: Timer },
-  { id: 'music', targetId: 'section-music', label: 'موسیقی', icon: Music },
-  { id: 'more', targetId: 'section-more', label: 'بیشتر', icon: Menu },
+  { id: 'today', targetId: 'section-today', label: 'امروز', icon: CalendarDays },
+  { id: 'inbox', targetId: 'section-history', label: 'صندوق ورودی', icon: Inbox },
+  { id: 'upcoming', targetId: 'section-tools', label: 'پیش رو', icon: CalendarClock },
+  { id: 'browse', targetId: 'section-music', label: 'مرور', icon: Menu },
 ];
 
 // Scroll-spy: whichever section anchor is closest to the top of the
