@@ -16,6 +16,7 @@ import {
 import Switch from './Switch';
 import SyncCard from './SyncCard';
 import BackupCard from './BackupCard';
+import BottomNav from './BottomNav';
 import PaymentsCard from './PaymentsCard';
 import ProjectLogCard from './ProjectLogCard';
 import TimerCard from './TimerCard';
@@ -454,6 +455,7 @@ export default function App() {
   const sortedTaskLogItems = [...taskLogItems].sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
 
   return (
+    <>
     <div className="wrap">
       <header>
         <div className="title">دفترچه‌ی روزانه</div>
@@ -462,6 +464,7 @@ export default function App() {
         </div>
       </header>
 
+      <div id="section-today" />
       <Collapsible title="یادداشت سریع" storageKey="quicklog">
         <div className="day-nav">
           <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, -1))} title="روز قبل">
@@ -957,6 +960,7 @@ export default function App() {
         )}
       </Collapsible>
 
+      <div id="section-history" />
       <HistoryCard />
 
       <Collapsible title="مرور روزانه" storageKey="dailyreview">
@@ -1053,12 +1057,15 @@ export default function App() {
 
       <SleepReportCard refreshSignal={sleepDataVersion} />
 
+      <div id="section-tools" />
       <TimerCard />
 
       <AlarmCard />
 
+      <div id="section-music" />
       <MusicCard />
 
+      <div id="section-more" />
       <PaymentsCard />
 
       <ProjectLogCard />
@@ -1072,5 +1079,7 @@ export default function App() {
         تاریخ‌ها شمسی نمایش داده می‌شن.
       </div>
     </div>
+    <BottomNav />
+    </>
   );
 }
