@@ -57,6 +57,9 @@ import {
 } from './repo';
 
 const TODAY = dayKey(0);
+// The nap/sleep/wake/mood gate is always about last night and this morning —
+// never about whichever day is being browsed in the notes section.
+const GATE_YESTERDAY = shiftDayKey(TODAY, -1);
 
 export default function App() {
   const [tab, setTab] = useState<NavTab>('today');
@@ -64,6 +67,11 @@ export default function App() {
   const [viewedDay, setViewedDay] = useState(TODAY);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
   const [prevDayLogItems, setPrevDayLogItems] = useState<LogItem[]>([]);
+  // Gate state is pinned to TODAY/GATE_YESTERDAY regardless of which day the
+  // notes section is currently browsing — the morning check-in is about last
+  // night, never about whatever day is on screen.
+  const [gateTodayItems, setGateTodayItems] = useState<LogItem[]>([]);
+  const [gateYesterdayItems, setGateYesterdayItems] = useState<LogItem[]>([]);
   const [logInput, setLogInput] = useState('');
   const [logType, setLogType] = useState<LogItemType | null>(null);
   const [logPriorityPending, setLogPriorityPending] = useState(false);
@@ -119,14 +127,18 @@ export default function App() {
   const prevDay = shiftDayKey(viewedDay, -1);
 
   const reload = useCallback(async () => {
-    const [l, pl, pending] = await Promise.all([
+    const [l, pl, pending, gt, gy] = await Promise.all([
       listLogItems(viewedDay),
       listLogItems(prevDay),
       listPendingWithDueDate(),
+      listLogItems(TODAY),
+      listLogItems(GATE_YESTERDAY),
     ]);
     setLogItems(l);
     setPrevDayLogItems(pl);
     setPendingWithDueDate(pending);
+    setGateTodayItems(gt);
+    setGateYesterdayItems(gy);
   }, [viewedDay, prevDay]);
 
   const reloadCategories = useCallback(async () => {
@@ -359,14 +371,14 @@ export default function App() {
   }
 
   async function onNoNapPrevDay() {
-    await addNapNone(prevDay);
+    await addNapNone(GATE_YESTERDAY);
     await reload();
     setSleepDataVersion((v) => v + 1);
   }
   async function onLogPrevDayNap() {
     const minutes = parseInt(prevNapDurationInput, 10);
     if (!minutes || minutes <= 0) return;
-    await addNapEntry(prevDay, minutes, prevNapHasStart ? prevNapStartInput || undefined : undefined);
+    await addNapEntry(GATE_YESTERDAY, minutes, prevNapHasStart ? prevNapStartInput || undefined : undefined);
     setPrevNapStartInput('');
     setPrevNapDurationInput('');
     setPrevNapHasStart(false);
@@ -377,14 +389,14 @@ export default function App() {
 
   async function onLogSleep() {
     if (!sleepTimeInput) return;
-    await addLogItem({ day: prevDay, text: sleepTimeInput, itemType: 'sleep', priority: false });
+    await addLogItem({ day: GATE_YESTERDAY, text: sleepTimeInput, itemType: 'sleep', priority: false });
     setSleepTimeInput('');
     await reload();
     setSleepDataVersion((v) => v + 1);
   }
   async function onLogWake() {
     if (!wakeTimeInput) return;
-    await addLogItem({ day: viewedDay, text: wakeTimeInput, itemType: 'wake', priority: false });
+    await addLogItem({ day: TODAY, text: wakeTimeInput, itemType: 'wake', priority: false });
     setWakeTimeInput('');
     await reload();
     setSleepDataVersion((v) => v + 1);
@@ -409,9 +421,9 @@ export default function App() {
   // Morning mood — one entry per day, same "log it once at the start of the
   // day" spot as sleep/wake, but re-tappable if the user changes their mind.
   async function onSetMood(moodId: string) {
-    const existing = logItems.find((it) => it.itemType === 'mood');
+    const existing = gateTodayItems.find((it) => it.itemType === 'mood');
     if (existing) await deleteLogItem(existing.recId);
-    await addLogItem({ day: viewedDay, text: moodId, itemType: 'mood', priority: false });
+    await addLogItem({ day: TODAY, text: moodId, itemType: 'mood', priority: false });
     await reload();
     setSleepDataVersion((v) => v + 1);
   }
@@ -424,30 +436,35 @@ export default function App() {
     );
   }
 
+  // Purely informational — the sleep-summary line shown above whichever
+  // day's notes are on screen, unrelated to whether the gate is open.
   const sleepEntry = prevDayLogItems.find((it) => it.itemType === 'sleep');
   const wakeEntry = logItems.find((it) => it.itemType === 'wake');
-  const moodEntry = logItems.find((it) => it.itemType === 'mood');
-  const napResolvedPrevDay = prevDayLogItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
   const napResolvedViewedDay = logItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
-  const isTodayView = viewedDay === TODAY;
+
+  // The gate itself is always about last night and this morning, never about
+  // whichever day is being browsed — so it's computed from the TODAY/
+  // GATE_YESTERDAY snapshot, not from logItems/prevDayLogItems.
+  const gateSleepEntry = gateYesterdayItems.find((it) => it.itemType === 'sleep');
+  const gateWakeEntry = gateTodayItems.find((it) => it.itemType === 'wake');
+  const gateMoodEntry = gateTodayItems.find((it) => it.itemType === 'mood');
+  const gateNapResolved = gateYesterdayItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
   // The morning-mood check gates the list the same way sleep/wake do, but
-  // only kicks in from 8am onward on today's page — no point demanding a
-  // "how do you feel this morning" answer before the morning has started,
-  // or retroactively on a past day being reviewed.
-  const moodDue = isTodayView && new Date().getHours() >= 8 && !moodEntry;
+  // only kicks in from 8am onward — no point demanding a "how do you feel
+  // this morning" answer before the morning has started.
+  const moodDue = new Date().getHours() >= 8 && !gateMoodEntry;
   // The whole nap/sleep/wake/mood gate only starts demanding anything from
-  // 6am onward on today's page — right after midnight the "new day" has
-  // technically started but the person is still awake from the previous
-  // one, so nagging them to log last night's sleep the instant the date
-  // rolls over is backwards. A past day being reviewed is always gated.
-  const gateActive = !isTodayView || new Date().getHours() >= 6;
+  // 6am onward — right after midnight the "new day" has technically started
+  // but the person is still awake from the previous one, so nagging them to
+  // log last night's sleep the instant the date rolls over is backwards.
+  const gateActive = new Date().getHours() >= 6;
   const gateStep: 'nap' | 'sleep' | 'wake' | 'mood' | 'unlocked' = !gateActive
     ? 'unlocked'
-    : !napResolvedPrevDay
+    : !gateNapResolved
       ? 'nap'
-      : !sleepEntry
+      : !gateSleepEntry
         ? 'sleep'
-        : !wakeEntry
+        : !gateWakeEntry
           ? 'wake'
           : moodDue
             ? 'mood'
@@ -589,30 +606,12 @@ export default function App() {
 
       <div id="section-today" />
       <Collapsible title="یادداشت سریع" storageKey="quicklog">
-        <div className="day-nav">
-          <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, -1))} title="روز قبل">
-            <ChevronRight size={16} />
-          </button>
-          <span className="day-nav-label">
-            {viewedDay === TODAY ? 'امروز — ' : ''}
-            {jalaliLabelForDayKey(viewedDay)}
-          </span>
-          <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, 1))} title="روز بعد">
-            <ChevronLeft size={16} />
-          </button>
-          {viewedDay !== TODAY && (
-            <button className="link-btn" onClick={() => setViewedDay(TODAY)}>
-              برگشت به امروز
-            </button>
-          )}
-        </div>
-
         {!dayUnlocked ? (
           <div className="sleep-gate">
             {gateStep === 'nap' && (
               <>
                 <div className="empty">
-                  قبل از ثبت خواب دیشب، اول بگو دیروز ({jalaliDateOnlyLabel(prevDay)}) چرت زدی یا نه.
+                  قبل از ثبت خواب دیشب، اول بگو دیروز ({jalaliDateOnlyLabel(GATE_YESTERDAY)}) چرت زدی یا نه.
                 </div>
                 {!prevNapFormOpen ? (
                   <div className="add-row">
@@ -650,7 +649,7 @@ export default function App() {
             {gateStep === 'sleep' && (
               <>
                 <div className="empty">
-                  برای دیدن لیست {jalaliLabelForDayKey(viewedDay)}، اول باید ساعت خوابِ دیشب (شب {jalaliDateOnlyLabel(prevDay)}) رو ثبت کنی.
+                  برای دیدن یادداشت‌ها، اول باید ساعت خوابِ دیشب (شب {jalaliDateOnlyLabel(GATE_YESTERDAY)}) رو ثبت کنی.
                 </div>
                 <div className="add-row">
                   <input type="time" value={sleepTimeInput} onChange={(e) => setSleepTimeInput(e.target.value)} />
@@ -661,7 +660,7 @@ export default function App() {
             {gateStep === 'wake' && (
               <>
                 <div className="empty">
-                  حالا ساعت بیداری {jalaliLabelForDayKey(viewedDay)} رو ثبت کن تا لیست این روز رو ببینی.
+                  حالا ساعت بیداری امروز رو ثبت کن تا به یادداشت‌ها دسترسی داشته باشی.
                 </div>
                 <div className="add-row">
                   <input type="time" value={wakeTimeInput} onChange={(e) => setWakeTimeInput(e.target.value)} />
@@ -690,6 +689,24 @@ export default function App() {
           </div>
         ) : (
           <>
+            <div className="day-nav">
+              <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, -1))} title="روز قبل">
+                <ChevronRight size={16} />
+              </button>
+              <span className="day-nav-label">
+                {viewedDay === TODAY ? 'امروز — ' : ''}
+                {jalaliLabelForDayKey(viewedDay)}
+              </span>
+              <button className="mini-btn" onClick={() => setViewedDay((d) => shiftDayKey(d, 1))} title="روز بعد">
+                <ChevronLeft size={16} />
+              </button>
+              {viewedDay !== TODAY && (
+                <button className="link-btn" onClick={() => setViewedDay(TODAY)}>
+                  برگشت به امروز
+                </button>
+              )}
+            </div>
+
             {sleepEntry && wakeEntry && (
               <div className="sleep-summary icon-row">
                 <Moon size={14} /> {sleepEntry.text} — <Sun size={14} /> {wakeEntry.text}
