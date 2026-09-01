@@ -49,6 +49,7 @@
   --nav-bg: #fbfaf8;
   --nav-active-bg: #fef4ee;
   --nav-icon: #d23323;
+  --font-sans: 'IRANSansX', 'Vazirmatn', sans-serif;
 }
 
 * {
@@ -67,6 +68,18 @@
 input,
 textarea {
   user-select: text;
+}
+/* Form controls don't inherit the page font by default — the UA stylesheet
+   gives button/input/textarea/select their own platform font no matter what
+   `body` declares. Fixing that per-component (as this file used to, in a
+   dozen-plus scattered `font-family: inherit` rules) means it silently
+   breaks again on every new button. Setting it once, globally, here, is the
+   only way it actually stays fixed. */
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
 /* All buttons hold a Lucide icon, text, or both — center them consistently
@@ -99,7 +112,7 @@ body {
   background-image: radial-gradient(circle, var(--paper-line) 1px, transparent 1px);
   background-size: 22px 22px;
   color: var(--ink);
-  font-family: 'IRANSansX', 'Vazirmatn', sans-serif;
+  font-family: var(--font-sans);
   min-height: 100vh;
 }
 
@@ -175,7 +188,6 @@ header {
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   border: none;
   border-bottom: 1px solid var(--paper-line);
-  font-family: inherit;
   font-size: 15px;
   color: var(--ink);
   text-align: start;
@@ -235,7 +247,6 @@ header {
   border: 1px solid transparent;
   border-radius: 10px;
   background: none;
-  font-family: inherit;
   color: var(--ink-soft);
   cursor: pointer;
 }
@@ -304,7 +315,6 @@ header {
   background: none;
   border: none;
   padding: 0;
-  font-family: inherit;
   cursor: pointer;
 }
 .habit-strip-dot {
@@ -620,7 +630,6 @@ header {
   padding: 6px 10px;
   font-size: 13px;
   color: var(--ink);
-  font-family: inherit;
 }
 .comment-row button {
   background: var(--ink);
@@ -772,7 +781,6 @@ header {
   padding: 6px 10px;
   font-size: 12.5px;
   cursor: pointer;
-  font-family: inherit;
   color: var(--ink-soft);
 }
 .type-btn.active {
@@ -804,7 +812,6 @@ header {
   background: var(--paper);
   border-radius: 8px;
   padding: 8px 6px;
-  font-family: inherit;
   font-size: 13px;
   color: var(--ink);
 }
@@ -878,7 +885,6 @@ header {
   background: var(--paper);
   border-radius: 7px;
   padding: 4px 6px;
-  font-family: inherit;
   font-size: 11.5px;
   color: var(--ink);
   max-width: 110px;
@@ -890,7 +896,6 @@ header {
   color: var(--paper);
   border-radius: 8px;
   padding: 6px 12px;
-  font-family: inherit;
   font-size: 13px;
   cursor: pointer;
 }
@@ -945,7 +950,6 @@ header {
   background: var(--paper);
   color: var(--ink-soft);
   cursor: pointer;
-  font-family: inherit;
   font-size: 13px;
   transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -1022,7 +1026,6 @@ header {
   font-size: 11.5px;
   cursor: pointer;
   font-weight: 700;
-  font-family: inherit;
 }
 .cat-btn.active {
   outline: 2px solid var(--ink);
@@ -1095,7 +1098,6 @@ header {
   background: var(--paper);
   border-radius: 8px;
   padding: 10px 12px;
-  font-family: inherit;
   font-size: 14px;
   color: var(--ink);
 }
@@ -1112,7 +1114,6 @@ header {
   color: var(--paper);
   border-radius: 8px;
   padding: 10px 16px;
-  font-family: inherit;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
@@ -1128,7 +1129,6 @@ textarea.review {
   background: var(--paper);
   border-radius: 8px;
   padding: 10px;
-  font-family: inherit;
   font-size: 14px;
   color: var(--ink);
   resize: vertical;
@@ -1140,7 +1140,6 @@ textarea.review {
   color: var(--ink-soft);
   text-decoration: underline;
   cursor: pointer;
-  font-family: inherit;
   font-size: 12.5px;
   padding: 4px 2px;
 }
@@ -1216,7 +1215,6 @@ textarea.review {
 .sleep-time-input {
   width: 72px;
   max-width: 72px;
-  font-family: inherit;
   font-size: 10.5px;
   padding: 3px 2px;
   border: 1px solid var(--paper-line);
@@ -1272,7 +1270,6 @@ textarea.review {
   background: none;
   border: none;
   cursor: pointer;
-  font-family: inherit;
   padding: 4px 2px;
   color: var(--ink-soft);
 }

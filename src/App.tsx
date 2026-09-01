@@ -114,6 +114,7 @@ export default function App() {
   const [editFormProjects, setEditFormProjects] = useState<Project[]>([]);
   const [pendingWithDueDate, setPendingWithDueDate] = useState<LogItem[]>([]);
   const [expandedNotesIds, setExpandedNotesIds] = useState<Set<string>>(new Set());
+  const [expandedSubtaskIds, setExpandedSubtaskIds] = useState<Set<string>>(new Set());
   const [commentOpenId, setCommentOpenId] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState('');
   const [commentEditing, setCommentEditing] = useState(false);
@@ -199,6 +200,14 @@ export default function App() {
   }
   function toggleNotesExpanded(recId: string) {
     setExpandedNotesIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(recId)) next.delete(recId);
+      else next.add(recId);
+      return next;
+    });
+  }
+  function toggleSubtasksExpanded(recId: string) {
+    setExpandedSubtaskIds((prev) => {
       const next = new Set(prev);
       if (next.has(recId)) next.delete(recId);
       else next.add(recId);
@@ -325,6 +334,10 @@ export default function App() {
   function onToggleSubtaskBox(recId: string) {
     setSubtaskDraft('');
     setSubtaskOpenId((cur) => (cur === recId ? null : recId));
+    // Opening the add-subtask box implies wanting to see the list it's
+    // adding to — otherwise a newly-added subtask would appear to vanish
+    // behind a still-collapsed chevron.
+    setExpandedSubtaskIds((prev) => new Set(prev).add(recId));
   }
   async function onAddSubtask(parentRecId: string) {
     if (!subtaskDraft.trim()) return;
@@ -450,9 +463,9 @@ export default function App() {
   const gateMoodEntry = gateTodayItems.find((it) => it.itemType === 'mood');
   const gateNapResolved = gateYesterdayItems.some((it) => it.itemType === 'nap' || it.itemType === 'nap_none');
   // The morning-mood check gates the list the same way sleep/wake do, but
-  // only kicks in from 8am onward — no point demanding a "how do you feel
+  // only kicks in from 7am onward — no point demanding a "how do you feel
   // this morning" answer before the morning has started.
-  const moodDue = new Date().getHours() >= 8 && !gateMoodEntry;
+  const moodDue = new Date().getHours() >= 7 && !gateMoodEntry;
   // The whole nap/sleep/wake/mood gate only starts demanding anything from
   // 6am onward — right after midnight the "new day" has technically started
   // but the person is still awake from the previous one, so nagging them to
@@ -508,7 +521,7 @@ export default function App() {
     .sort((a, b) => (a.priority === b.priority ? 0 : a.priority ? -1 : 1));
   const renderedItems = [...reminderItems, ...sortedTaskLogItems].flatMap((it) => [
     it,
-    ...(subtasksByParent.get(it.recId) ?? []),
+    ...(expandedSubtaskIds.has(it.recId) ? subtasksByParent.get(it.recId) ?? [] : []),
   ]);
 
   // Everything except the quick log lives behind the "مرور" tab, one row per
@@ -985,6 +998,15 @@ export default function App() {
                         className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
                         onClick={() => toggleNotesExpanded(it.recId)}
                         title="نمایش/پنهان‌کردن توضیحات"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    )}
+                    {canToggle && !isSub && subs.length > 0 && (
+                      <button
+                        className={'chevron-btn small' + (expandedSubtaskIds.has(it.recId) ? '' : ' collapsed')}
+                        onClick={() => toggleSubtasksExpanded(it.recId)}
+                        title="نمایش/پنهان‌کردن زیرکارها"
                       >
                         <ChevronDown size={14} />
                       </button>

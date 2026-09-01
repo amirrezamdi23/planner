@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react';
-import { Moon, Sun, Clock, Smile } from 'lucide-react';
+import { Moon, Sun, Clock, Smile, BedSingle } from 'lucide-react';
 import Collapsible from './Collapsible';
 import { dayKey, shiftDayKey, jalaliSlashDateForDayKey, isInCurrentJalaliMonth } from './lib/date';
 import { listSleepReports, editSleepTime, editWakeTime, type SleepDayReport } from './repo';
@@ -222,7 +222,8 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
                 <th>تاریخ</th>
                 <th title="ساعت خواب"><Moon size={14} /></th>
                 <th title="ساعت بیداری"><Sun size={14} /></th>
-                <th title="مدت خواب"><Clock size={14} /></th>
+                <th title="چرت"><BedSingle size={14} /></th>
+                <th title="مجموع خواب"><Clock size={14} /></th>
                 <th title="مود صبح"><Smile size={14} /></th>
               </tr>
             </thead>
@@ -248,6 +249,7 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
                         (r.wakeTime ?? '—')
                       )}
                     </td>
+                    <td>{r.napTotalMin > 0 ? formatDuration(r.napTotalMin) : '—'}</td>
                     <td>{r.napNone && r.totalSleepMin === undefined ? 'چرت نزدی' : formatDuration(r.totalSleepMin)}</td>
                     <td>
                       {moodOpt ? (
