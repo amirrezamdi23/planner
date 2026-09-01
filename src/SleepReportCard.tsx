@@ -64,7 +64,7 @@ function averageOf(nums: number[]): number | undefined {
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
-export default function SleepReportCard({ refreshSignal }: { refreshSignal: number }) {
+export default function SleepReportCard() {
   const [reports, setReports] = useState<SleepDayReport[]>([]);
   const [filter, setFilter] = useState<FilterMode>('week');
   const [editingDay, setEditingDay] = useState<string | null>(null);
@@ -77,7 +77,7 @@ export default function SleepReportCard({ refreshSignal }: { refreshSignal: numb
 
   useEffect(() => {
     reload();
-  }, [reload, refreshSignal]);
+  }, [reload]);
 
   // A right-to-left swipe (a finger drag starting right, ending left — the
   // "forward" gesture in RTL) on a row opens edit mode for that night's
