@@ -13,7 +13,7 @@ export interface MoodOption {
 // id — a green-to-red spectrum from great to terrible.
 export const MOOD_OPTIONS: MoodOption[] = [
   { id: 'great', label: 'عالی', Icon: Laugh, color: '#1e7d4b', bg: '#dcefe0' },
-  { id: 'good', label: 'خوب', Icon: Smile, color: '#2f6f5e', bg: '#dce7e0' },
+  { id: 'good', label: 'خوب', Icon: Smile, color: '#4ecf3d', bg: '#dce7e0' },
   { id: 'okay', label: 'معمولی', Icon: Meh, color: '#b8842a', bg: '#f1e5c9' },
   { id: 'bad', label: 'بد', Icon: Frown, color: '#c5623f', bg: '#f1dcd6' },
   { id: 'terrible', label: 'خیلی بد', Icon: Angry, color: '#fff', bg: '#a63d2f' },
