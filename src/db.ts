@@ -13,7 +13,8 @@ export type RecordType =
   | 'project'
   | 'project_log'
   | 'alarm'
-  | 'song';
+  | 'song'
+  | 'notification';
 
 export interface Rec {
   id: string;

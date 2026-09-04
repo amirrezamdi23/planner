@@ -10,3 +10,4 @@ export * from './payments';
 export * from './projects';
 export * from './alarms';
 export * from './songs';
+export * from './notifications';

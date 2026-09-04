@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react';
 import {
   Moon, ArrowRight, History, NotebookPen, Timer, AlarmClock, Music, Wallet,
-  FolderKanban, RefreshCw, Database, Repeat, type LucideIcon,
+  FolderKanban, RefreshCw, Database, Repeat, Bell, type LucideIcon,
 } from 'lucide-react';
 import { todayJalaliLabel, todayWeekdayLabel } from './lib/date';
 import SyncCard from './SyncCard';
@@ -21,6 +21,7 @@ import HistoryCard from './HistoryCard';
 import { BareCardContext } from './Collapsible';
 import QuickLogCard, { type QuickLogHandle } from './QuickLogCard';
 import JournalCard from './JournalCard';
+import NotificationsCard from './NotificationsCard';
 
 export default function App() {
   const [tab, setTab] = useState<NavTab>('today');
@@ -39,6 +40,7 @@ export default function App() {
     { id: 'sleep', title: 'گزارش خواب', Icon: Moon, node: <SleepReportCard /> },
     { id: 'timer', title: 'تایمر چندمرحله‌ای', Icon: Timer, node: <TimerCard /> },
     { id: 'alarm', title: 'آلارم', Icon: AlarmClock, node: <AlarmCard /> },
+    { id: 'notifications', title: 'اعلان‌ها', Icon: Bell, node: <NotificationsCard /> },
     { id: 'music', title: 'پخش موسیقی', Icon: Music, node: <MusicCard /> },
     { id: 'payments', title: 'پرداخت‌ها', Icon: Wallet, node: <PaymentsCard /> },
     { id: 'projects', title: 'دسته‌بندی', Icon: FolderKanban, node: <ProjectLogCard /> },
