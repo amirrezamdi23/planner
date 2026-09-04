@@ -14,6 +14,13 @@ import {
 
 const TODAY = dayKey(0);
 
+// The device's local clock, 24h — createdAt is an ISO string in UTC, so this
+// has to go through Date rather than slicing the string.
+function formatTime24(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 const TAGS: { id: JournalTag; label: string; Icon: typeof Sunrise }[] = [
   { id: 'morning', label: 'بازتاب صبح', Icon: Sunrise },
   { id: 'evening', label: 'بازتاب شب', Icon: Sunset },
@@ -184,6 +191,17 @@ export default function JournalCard() {
                 </>
               ) : (
                 <span className="log-text" style={{ whiteSpace: 'pre-wrap' }}>
+                  <span
+                    className="pill"
+                    style={{
+                      background: 'var(--paper)',
+                      color: 'var(--ink-soft)',
+                      marginInlineEnd: 6,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {formatTime24(e.createdAt)}
+                  </span>
                   {e.text}
                 </span>
               )}
