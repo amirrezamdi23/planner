@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronLeft, ChevronRight, Minus, Pencil, X, Sunrise, Sunset, NotebookText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, X, Sunrise, Sunset, NotebookText } from 'lucide-react';
 import { dayKey, shiftDayKey, jalaliLabelForDayKey } from './lib/date';
 import Collapsible from './Collapsible';
 import {
@@ -121,16 +121,15 @@ export default function JournalCard() {
   const bullet = useBulletTextarea(text, setText);
   const editBullet = useBulletTextarea(editingText, setEditingText);
 
-  // Same idea as Quick Log's add-input: keep the ثبت button reachable
-  // without the user scrolling for it — once when the tag picker reveals
-  // the form (or the day changes), and again after every add, since a new
-  // entry pushes the form further down for whoever's writing several in a
-  // row.
-  const submitBtnRef = useRef<HTMLButtonElement>(null);
-  function scrollToForm() {
-    submitBtnRef.current?.scrollIntoView({ block: 'end' });
-  }
-  useEffect(scrollToForm, [viewedDay, tag]);
+  // Picking a tag reveals the textarea + ثبت button below the fold on a
+  // long day — scroll that whole block into view the moment it appears.
+  // Submitting does the reverse: jump back up to the tag picker, since the
+  // next thing to decide is which tag the next entry goes under.
+  const formSectionRef = useRef<HTMLDivElement>(null);
+  const tagPickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (tag) formSectionRef.current?.scrollIntoView({ block: 'end' });
+  }, [tag]);
 
   useEffect(() => {
     ensureBulletJournalProject().then(setProjectId);
@@ -154,7 +153,7 @@ export default function JournalCard() {
     await addProjectLogEntry(projectId, viewedDay, text, tag);
     setText(''); // tag stays selected — writing several entries under it in a row is the common case
     await reload();
-    scrollToForm();
+    tagPickerRef.current?.scrollIntoView({ block: 'center' });
   }
   function onStartEdit(e: ProjectLogEntry) {
     setEditingId(e.recId);
@@ -210,9 +209,6 @@ export default function JournalCard() {
             </div>
           )}
           <div className="log-item">
-            <span className="log-mark">
-              <Minus size={15} />
-            </span>
             <div style={{ flex: 1 }}>
               {isEditing ? (
                 <>
@@ -263,7 +259,7 @@ export default function JournalCard() {
         );
       })}
 
-      <div className="type-select">
+      <div className="type-select" ref={tagPickerRef}>
         {TAGS.map((t) => (
           <button
             key={t.id}
@@ -275,22 +271,22 @@ export default function JournalCard() {
         ))}
       </div>
       {tag && (
-        <div className="add-row">
-          <textarea
-            ref={bullet.ref}
-            className="review journal-textarea"
-            placeholder="شروع کن به نوشتن… («- » یه بولت می‌سازه)"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={bullet.onKeyDown}
-          />
-        </div>
-      )}
-      {tag && (
-        <div className="add-row">
-          <button ref={submitBtnRef} onClick={onAdd} disabled={!text.trim()}>
-            ثبت
-          </button>
+        <div ref={formSectionRef}>
+          <div className="add-row">
+            <textarea
+              ref={bullet.ref}
+              className="review journal-textarea"
+              placeholder="شروع کن به نوشتن… («- » یه بولت می‌سازه)"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={bullet.onKeyDown}
+            />
+          </div>
+          <div className="add-row">
+            <button onClick={onAdd} disabled={!text.trim()}>
+              ثبت
+            </button>
+          </div>
         </div>
       )}
     </Collapsible>
