@@ -27,6 +27,22 @@ const TAGS: { id: JournalTag; label: string; Icon: typeof Sunrise }[] = [
   { id: 'day', label: 'روز', Icon: NotebookText },
 ];
 
+// The list reads top-to-bottom as the shape of a day: morning reflection
+// first, evening reflection last, "روز" entries always in between — not
+// sorted by tag alphabetically or by when the tag button happens to sit in
+// the picker above.
+const TAG_ORDER: Record<JournalTag, number> = { morning: 0, day: 1, evening: 2 };
+
+function sortEntries(entries: ProjectLogEntry[]): ProjectLogEntry[] {
+  return [...entries].sort((a, b) => {
+    const orderA = a.tag ? TAG_ORDER[a.tag] : 1;
+    const orderB = b.tag ? TAG_ORDER[b.tag] : 1;
+    if (orderA !== orderB) return orderA - orderB;
+    // Within the same tag, earliest first — morning towards evening.
+    return a.createdAt.localeCompare(b.createdAt);
+  });
+}
+
 // Enter continues a "- " bullet onto the next line (an empty bullet exits the
 // list instead, so a line is always one Enter away from plain text); Tab /
 // Shift+Tab indent or outdent the current line by two spaces. Both operate
@@ -105,6 +121,17 @@ export default function JournalCard() {
   const bullet = useBulletTextarea(text, setText);
   const editBullet = useBulletTextarea(editingText, setEditingText);
 
+  // Same idea as Quick Log's add-input: keep the ثبت button reachable
+  // without the user scrolling for it — once when the tag picker reveals
+  // the form (or the day changes), and again after every add, since a new
+  // entry pushes the form further down for whoever's writing several in a
+  // row.
+  const submitBtnRef = useRef<HTMLButtonElement>(null);
+  function scrollToForm() {
+    submitBtnRef.current?.scrollIntoView({ block: 'end' });
+  }
+  useEffect(scrollToForm, [viewedDay, tag]);
+
   useEffect(() => {
     ensureBulletJournalProject().then(setProjectId);
   }, []);
@@ -112,7 +139,7 @@ export default function JournalCard() {
   const reload = useCallback(async () => {
     if (!projectId) return;
     const all = await listProjectLog(projectId);
-    setEntries(all.filter((e) => e.day === viewedDay));
+    setEntries(sortEntries(all.filter((e) => e.day === viewedDay)));
   }, [projectId, viewedDay]);
 
   useEffect(() => {
@@ -127,6 +154,7 @@ export default function JournalCard() {
     await addProjectLogEntry(projectId, viewedDay, text, tag);
     setText(''); // tag stays selected — writing several entries under it in a row is the common case
     await reload();
+    scrollToForm();
   }
   function onStartEdit(e: ProjectLogEntry) {
     setEditingId(e.recId);
@@ -245,7 +273,7 @@ export default function JournalCard() {
       )}
       {tag && (
         <div className="add-row">
-          <button onClick={onAdd} disabled={!text.trim()}>
+          <button ref={submitBtnRef} onClick={onAdd} disabled={!text.trim()}>
             ثبت
           </button>
         </div>
