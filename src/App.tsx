@@ -20,6 +20,7 @@ import SleepReportCard from './SleepReportCard';
 import HistoryCard from './HistoryCard';
 import { BareCardContext } from './Collapsible';
 import QuickLogCard, { type QuickLogHandle } from './QuickLogCard';
+import JournalCard from './JournalCard';
 
 export default function App() {
   const [tab, setTab] = useState<NavTab>('today');
@@ -134,6 +135,8 @@ export default function App() {
 
         <div id="section-today" />
         <QuickLogCard ref={quickLogRef} />
+
+        <JournalCard />
 
         <div className="footnote">
           اطلاعات همین دستگاه ذخیره می‌شه؛ اگه همگام‌سازی رو تنظیم کنی، بین دستگاه‌هات هم به‌روز می‌مونه.

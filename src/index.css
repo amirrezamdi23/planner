@@ -1133,6 +1133,13 @@ textarea.review {
   color: var(--ink);
   resize: vertical;
 }
+/* Grows with its content instead of scrolling internally — height is set
+   directly by JS (see JournalCard's autoResize), so no resize handle and no
+   internal scrollbar fighting that. */
+.journal-textarea {
+  resize: none;
+  overflow: hidden;
+}
 
 .link-btn {
   background: none;

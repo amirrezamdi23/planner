@@ -272,6 +272,18 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
   // long-press doesn't also toggle the task done.
   const longPressTimerRef = useRef<number | null>(null);
   const longPressFiredRef = useRef(false);
+
+  // With a long list of items, the add-input ends up below the fold — scroll
+  // it into view whenever the section first becomes visible or the viewed
+  // day changes, so it's reachable without the user hunting for it. Not
+  // re-triggered by every reload() (e.g. checking a task off), only by
+  // actually landing on a day. If the gate is showing, the ref just isn't
+  // mounted yet and this is a no-op.
+  const addInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (loading) return;
+    addInputRef.current?.scrollIntoView({ block: 'end' });
+  }, [viewedDay, loading]);
   function onMarkPointerDown(recId: string) {
     longPressFiredRef.current = false;
     longPressTimerRef.current = window.setTimeout(async () => {
@@ -614,7 +626,7 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
           )}
 
           {!napResolvedViewedDay && (
-            <Collapsible title="خواب میان‌روزی" storageKey="nap">
+            <Collapsible title="خواب میان‌روزی" storageKey="nap" nested>
               {!napFormOpen ? (
                 <div className="add-row">
                   <button onClick={() => setNapFormOpen(true)}>ثبت</button>
@@ -649,6 +661,12 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
             </Collapsible>
           )}
 
+          <Collapsible
+            title="کارها و یادداشت‌ها"
+            storageKey="quicklog-items"
+            tag={String(reminderItems.length + taskLogItems.length)}
+            nested
+          >
           {reminderItems.length === 0 && taskLogItems.length === 0 && (
             <div className="empty">چیزی ثبت نشده.</div>
           )}
@@ -967,6 +985,7 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
               </Fragment>
             );
           })}
+          </Collapsible>
 
           <div className="type-select">
             {LOG_TYPES.map((t) => (
@@ -1107,6 +1126,7 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
 
           <div className="add-row">
             <input
+              ref={addInputRef}
               placeholder={
                 logType === null
                   ? 'اول نوع رو از بالا انتخاب کن'
