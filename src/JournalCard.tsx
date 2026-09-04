@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronLeft, ChevronRight, Pencil, X, Sunrise, Sunset, NotebookText } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { ChevronLeft, ChevronRight, Minus, Pencil, X, Sunrise, Sunset, NotebookText } from 'lucide-react';
 import { dayKey, shiftDayKey, jalaliLabelForDayKey } from './lib/date';
 import Collapsible from './Collapsible';
 import {
@@ -192,14 +192,28 @@ export default function JournalCard() {
       </div>
 
       {entries.length === 0 && <div className="empty">چیزی برای این روز ثبت نشده.</div>}
-      {entries.map((e) => {
+      {entries.map((e, i) => {
         const t = TAGS.find((x) => x.id === e.tag);
+        // Entries are already sorted into tag-contiguous groups (see
+        // sortEntries) — the tag only needs to be named once, above the
+        // first entry of each run, not repeated on every row under it.
+        const isGroupStart = i === 0 || entries[i - 1].tag !== e.tag;
         const isEditing = editingId === e.recId;
         return (
-          <div className="log-item" key={e.recId}>
-            <span className="log-mark">{t && <t.Icon size={15} />}</span>
+          <Fragment key={e.recId}>
+          {isGroupStart && t && (
+            <div
+              className="icon-row"
+              style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-soft)', margin: i === 0 ? '0 0 4px' : '14px 0 4px' }}
+            >
+              <t.Icon size={14} /> {t.label}
+            </div>
+          )}
+          <div className="log-item">
+            <span className="log-mark">
+              <Minus size={15} />
+            </span>
             <div style={{ flex: 1 }}>
-              {t && <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginBottom: 2 }}>{t.label}</div>}
               {isEditing ? (
                 <>
                   <textarea
@@ -245,6 +259,7 @@ export default function JournalCard() {
               </>
             )}
           </div>
+          </Fragment>
         );
       })}
 
