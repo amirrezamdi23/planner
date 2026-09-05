@@ -712,6 +712,12 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
             const phName = phaseName(it.projectId, it.phaseId);
             const subs = subtasksByParent.get(it.recId) ?? [];
             const isEditing = editingLogId === it.recId;
+            // The two chevrons stay on the row itself rather than moving into
+            // the action strip below it: they only show and hide content that
+            // is already part of the row, so reaching them shouldn't cost a
+            // tap on the row first.
+            const showNotesChevron = !!it.notes;
+            const showSubsChevron = canToggle && !isSub && subs.length > 0;
             const dueStatus = dueStatusFor(it);
             const dueDaysLeft = it.dueDate ? daysBetweenDayKeys(viewedDay, it.dueDate) : null;
             const rowClass =
@@ -933,27 +939,31 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                   </span>
                   {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
                 </div>
+                {(showNotesChevron || showSubsChevron) && (
+                  <div className="log-actions">
+                    {showNotesChevron && (
+                      <button
+                        className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
+                        onClick={() => toggleNotesExpanded(it.recId)}
+                        title="نمایش/پنهان‌کردن توضیحات"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    )}
+                    {showSubsChevron && (
+                      <button
+                        className={'chevron-btn small' + (expandedSubtaskIds.has(it.recId) ? '' : ' collapsed')}
+                        onClick={() => toggleSubtasksExpanded(it.recId)}
+                        title="نمایش/پنهان‌کردن زیرکارها"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               {actionsOpenId === it.recId && (
                 <div className="log-actions-panel">
-                  {it.notes && (
-                    <button
-                      className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
-                      onClick={() => toggleNotesExpanded(it.recId)}
-                      title="نمایش/پنهان‌کردن توضیحات"
-                    >
-                      <ChevronDown size={15} />
-                    </button>
-                  )}
-                  {canToggle && !isSub && subs.length > 0 && (
-                    <button
-                      className={'chevron-btn small' + (expandedSubtaskIds.has(it.recId) ? '' : ' collapsed')}
-                      onClick={() => toggleSubtasksExpanded(it.recId)}
-                      title="نمایش/پنهان‌کردن زیرکارها"
-                    >
-                      <ChevronDown size={15} />
-                    </button>
-                  )}
                   {canToggle && !isSub && (
                     <button
                       className={'habit-del' + (subs.length > 0 ? ' active' : '')}
