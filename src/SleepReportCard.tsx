@@ -1,9 +1,17 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react';
-import { Moon, Sun, Clock, Smile, BedSingle } from 'lucide-react';
+import { Moon, Sun, Clock, Smile, BedSingle, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import Collapsible from './Collapsible';
-import { dayKey, shiftDayKey, jalaliSlashDateForDayKey, isInCurrentJalaliMonth } from './lib/date';
-import { listSleepReports, editSleepTime, editWakeTime, type SleepDayReport } from './repo';
+import { dayKey, shiftDayKey, jalaliLabelForDayKey, jalaliSlashDateForDayKey, isInCurrentJalaliMonth } from './lib/date';
+import {
+  listSleepReports,
+  editSleepTime,
+  editWakeTime,
+  addNapEntry,
+  addNapNone,
+  deleteLogItem,
+  type SleepDayReport,
+} from './repo';
 import { MOOD_OPTIONS } from './moodOptions';
 
 // شنبه is day 0 of the week and جمعه the last — the days between (یکشنبه..پنجشنبه)
@@ -70,6 +78,17 @@ export default function SleepReportCard() {
   const [editingDay, setEditingDay] = useState<string | null>(null);
   const [editSleep, setEditSleep] = useState('');
   const [editWake, setEditWake] = useState('');
+
+  // "افزودن روز گذشته": for a night the daily gate never caught (missed a
+  // few days in a row), lets sleep/wake/nap times be logged directly for
+  // whichever past day is picked, instead of only being able to fix a night
+  // that already has a row via swipe-edit.
+  const [showBackfill, setShowBackfill] = useState(false);
+  const [backfillDay, setBackfillDay] = useState(() => shiftDayKey(dayKey(0), -1));
+  const [backfillSleep, setBackfillSleep] = useState('');
+  const [backfillWake, setBackfillWake] = useState('');
+  const [napDuration, setNapDuration] = useState('');
+  const [napStart, setNapStart] = useState('');
 
   const reload = useCallback(async () => {
     setReports(await listSleepReports());
@@ -155,11 +174,49 @@ export default function SleepReportCard() {
     onPointerLeave: endSwipe,
   };
 
+  // Shared by swipe-edit (a row that already exists) and the backfill form (a
+  // day that may not have any sleep/wake entry yet) — editSleepTime/
+  // editWakeTime upsert, so both call sites work whether or not the record
+  // was already there.
+  async function saveSleepWake(day: string, sleep: string, wake: string) {
+    if (sleep) await editSleepTime(day, sleep);
+    if (wake) await editWakeTime(shiftDayKey(day, 1), wake);
+  }
+
   async function onSaveEdit() {
     if (!editingDay) return;
-    if (editSleep) await editSleepTime(editingDay, editSleep);
-    if (editWake) await editWakeTime(shiftDayKey(editingDay, 1), editWake);
+    await saveSleepWake(editingDay, editSleep, editWake);
     setEditingDay(null);
+    await reload();
+  }
+
+  function syncBackfillFields(day: string) {
+    const r = reports.find((x) => x.day === day);
+    setBackfillSleep(r?.sleepTime ?? '');
+    setBackfillWake(r?.wakeTime ?? '');
+  }
+  function openBackfill() {
+    syncBackfillFields(backfillDay);
+    setShowBackfill(true);
+  }
+  function goBackfillDay(next: string) {
+    syncBackfillFields(next);
+    setBackfillDay(next);
+  }
+  async function onSaveBackfill() {
+    await saveSleepWake(backfillDay, backfillSleep, backfillWake);
+    await reload();
+  }
+  async function onAddBackfillNap() {
+    const minutes = parseInt(napDuration, 10);
+    if (!minutes || minutes <= 0) return;
+    await addNapEntry(backfillDay, minutes, napStart || undefined);
+    setNapDuration('');
+    setNapStart('');
+    await reload();
+  }
+  async function onRemoveBackfillEntry(recId: string) {
+    await deleteLogItem(recId);
     await reload();
   }
 
@@ -184,6 +241,9 @@ export default function SleepReportCard() {
     if (filter === 'month') return isInCurrentJalaliMonth(wakeDay);
     return cutoff !== null && wakeDay >= cutoff;
   });
+
+  const backfillReport = reports.find((r) => r.day === backfillDay);
+  const backfillNaps = backfillReport?.naps ?? [];
 
   const avgSleep = circularMeanTime(visible.map((r) => r.sleepTime).filter((t): t is string => !!t));
   const avgWake = circularMeanTime(visible.map((r) => r.wakeTime).filter((t): t is string => !!t));
@@ -291,6 +351,98 @@ export default function SleepReportCard() {
           </button>
         ))}
       </div>
+
+      {showBackfill ? (
+        <div className="add-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <div className="day-nav">
+            <button className="mini-btn" onClick={() => goBackfillDay(shiftDayKey(backfillDay, -1))} title="روز قبل">
+              <ChevronRight size={16} />
+            </button>
+            <span className="day-nav-label">{jalaliLabelForDayKey(backfillDay)}</span>
+            <button
+              className="mini-btn"
+              onClick={() => backfillDay < today && goBackfillDay(shiftDayKey(backfillDay, 1))}
+              disabled={backfillDay >= today}
+              title="روز بعد"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+
+          <div className="add-row">
+            <span style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Moon size={14} /> ساعت خواب
+            </span>
+            <input type="time" value={backfillSleep} onChange={(e) => setBackfillSleep(e.target.value)} className="sleep-time-input" />
+            <span style={{ fontSize: 12, color: 'var(--ink-soft)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Sun size={14} /> ساعت بیداری (صبح روز بعد)
+            </span>
+            <input type="time" value={backfillWake} onChange={(e) => setBackfillWake(e.target.value)} className="sleep-time-input" />
+            <button onClick={onSaveBackfill}>ذخیره ساعت خواب/بیداری</button>
+          </div>
+
+          {backfillNaps.map((n) => (
+            <div className="log-item" key={n.recId}>
+              <span className="log-text">
+                {n.start ? `${n.start} — ` : ''}
+                {formatDuration(n.durationMin)}
+              </span>
+              <button className="habit-del" onClick={() => onRemoveBackfillEntry(n.recId)} title="حذف">
+                <X size={14} />
+              </button>
+            </div>
+          ))}
+          {backfillReport?.napNone && backfillReport.napNoneRecId && (
+            <div className="log-item">
+              <span className="log-text">چرت نزدی</span>
+              <button
+                className="habit-del"
+                onClick={() => onRemoveBackfillEntry(backfillReport.napNoneRecId!)}
+                title="لغو"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          <div className="add-row">
+            <input
+              type="number"
+              min={1}
+              placeholder="مدت چرت (دقیقه)"
+              value={napDuration}
+              onChange={(e) => setNapDuration(e.target.value)}
+            />
+            <input type="time" value={napStart} onChange={(e) => setNapStart(e.target.value)} title="ساعت شروع چرت (اختیاری)" />
+            <button onClick={onAddBackfillNap} disabled={!napDuration}>
+              افزودن چرت
+            </button>
+            {!backfillReport?.napNone && (
+              <button
+                className="link-btn"
+                onClick={async () => {
+                  await addNapNone(backfillDay);
+                  await reload();
+                }}
+              >
+                چرت نزدم
+              </button>
+            )}
+          </div>
+
+          <div className="add-row">
+            <button className="link-btn" onClick={() => setShowBackfill(false)}>
+              بستن
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="add-row">
+          <button onClick={openBackfill}>
+            <Plus size={14} /> افزودن گزارش روز گذشته
+          </button>
+        </div>
+      )}
     </Collapsible>
   );
 }

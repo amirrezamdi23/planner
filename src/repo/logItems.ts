@@ -249,23 +249,35 @@ export async function addNapNone(day: string): Promise<void> {
 }
 
 // Lets SleepReportCard's swipe-to-edit fix a mis-typed sleep/wake time after
-// the fact, without going through the gate flow again.
+// the fact, and lets its "backfill a past day" form log a night the daily
+// gate was never open for — so this upserts rather than only editing: a day
+// with no sleep/wake entry yet gets one created instead of silently no-oping.
 export async function editSleepTime(day: string, time: string): Promise<void> {
   if (!time) return;
   const recs = await liveByType('log_item');
   const r = recs.find((r) => (r.payload as LogItemPayload).day === day && (r.payload as LogItemPayload).itemType === 'sleep');
-  if (!r) return;
-  const p = r.payload as LogItemPayload;
-  await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
+  if (r) {
+    const p = r.payload as LogItemPayload;
+    await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
+  } else {
+    await db.records.put(
+      makeRecord('log_item', { day, text: time, done: false, itemType: 'sleep', priority: false } as LogItemPayload),
+    );
+  }
 }
 
 export async function editWakeTime(day: string, time: string): Promise<void> {
   if (!time) return;
   const recs = await liveByType('log_item');
   const r = recs.find((r) => (r.payload as LogItemPayload).day === day && (r.payload as LogItemPayload).itemType === 'wake');
-  if (!r) return;
-  const p = r.payload as LogItemPayload;
-  await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
+  if (r) {
+    const p = r.payload as LogItemPayload;
+    await db.records.put({ ...r, payload: { ...p, text: time }, updatedAt: new Date().toISOString() });
+  } else {
+    await db.records.put(
+      makeRecord('log_item', { day, text: time, done: false, itemType: 'wake', priority: false } as LogItemPayload),
+    );
+  }
 }
 
 // Three-state cycle for a task's checkbox: not done -> done -> failed

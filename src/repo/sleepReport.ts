@@ -14,6 +14,7 @@ export interface SleepDayReport {
   naps: { recId: string; start: string; durationMin: number }[];
   napTotalMin: number;
   napNone: boolean;
+  napNoneRecId?: string; // lets the backfill form undo a mistaken "چرت نزدم" mark
   totalSleepMin?: number; // night sleep + naps, the day's real total
   mood?: string; // morning-mood id, logged the same day as the wake entry
 }
@@ -24,7 +25,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
   const wakes = new Map<string, string>();
   const moods = new Map<string, string>();
   const naps = new Map<string, { recId: string; start: string; durationMin: number }[]>();
-  const napNoneDays = new Set<string>();
+  const napNoneDays = new Map<string, string>(); // day -> recId, so the mark can be undone
 
   for (const r of recs) {
     const p = r.payload as LogItemPayload;
@@ -36,7 +37,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
       arr.push({ recId: r.id, start: p.text, durationMin: p.durationMin ?? 0 });
       naps.set(p.day, arr);
     } else if (p.itemType === 'nap_none') {
-      napNoneDays.add(p.day);
+      napNoneDays.set(p.day, r.id);
     }
   }
 
@@ -48,7 +49,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
   const days = new Set<string>([
     ...sleeps.keys(),
     ...naps.keys(),
-    ...napNoneDays,
+    ...napNoneDays.keys(),
     ...[...wakes.keys()].map((wd) => shiftDayKey(wd, -1)),
   ]);
 
@@ -82,6 +83,7 @@ export async function listSleepReports(): Promise<SleepDayReport[]> {
       naps: napList,
       napTotalMin,
       napNone: napNoneDays.has(day),
+      napNoneRecId: napNoneDays.get(day),
       totalSleepMin,
       mood: moods.get(nextDay),
     });
