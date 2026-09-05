@@ -77,4 +77,9 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- The clock app's ACTION_SHOW_ALARMS activity is permission-protected
+         (Samsung's AlarmCTSHandleActivity guards on this), so opening it from
+         the nightly reminder's بله button is a Permission Denial without it.
+         A normal permission — granted at install, no runtime prompt. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 </manifest>

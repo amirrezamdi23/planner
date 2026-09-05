@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { X, Lock } from 'lucide-react';
+import { X, Lock, Pencil } from 'lucide-react';
 import Collapsible from './Collapsible';
 import Switch from './Switch';
 import { scheduleRingAlarm, cancelRingAlarm } from './lib/clockAlarm';
 import { clockAlarmId, hashToSlot, cancelAlarm as cancelLegacyNotification } from './lib/alarm';
-import { listAlarms, addAlarm, setAlarmEnabled, deleteAlarm, type Alarm } from './repo';
+import { listAlarms, addAlarm, editAlarm, setAlarmEnabled, deleteAlarm, type Alarm } from './repo';
 
 // Persian week order (شنبه first) — each entry's `js` is JS Date#getDay(),
 // which is what gets stored and what the native scheduler's weekday (1=Sun..7=Sat,
@@ -67,16 +67,149 @@ async function cancelAllStages(alarm: Alarm): Promise<void> {
   }
 }
 
+// If the user never touches the weekday picker, don't block adding the
+// alarm — infer the single day it should ring on from the chosen time:
+// today if that time hasn't passed yet, otherwise tomorrow.
+function inferWeekdayFromTime(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  const now = new Date();
+  const stillUpcomingToday = h > now.getHours() || (h === now.getHours() && m > now.getMinutes());
+  return stillUpcomingToday ? now.getDay() : (now.getDay() + 1) % 7;
+}
+
+// The counts live as strings while being typed (an <input type="number">
+// passes through half-finished values like "" or "1e"), and are clamped only
+// on submit — see toAlarmFields.
+interface AlarmFormValues {
+  name: string;
+  time: string;
+  weekdays: number[];
+  stageCount: string;
+  intervalMin: string;
+  cancelEnabled: boolean;
+}
+const EMPTY_FORM: AlarmFormValues = {
+  name: '',
+  time: '07:00',
+  weekdays: [],
+  stageCount: '1',
+  intervalMin: '5',
+  // Defaults to "امکان لغو داشته باشه" — a deliberate opt-in is needed to
+  // make an alarm hard to dismiss, not the other way around.
+  cancelEnabled: true,
+};
+
+function toAlarmFields(v: AlarmFormValues): Omit<Alarm, 'recId' | 'enabled'> {
+  return {
+    name: v.name.trim(),
+    weekdays: v.weekdays.length > 0 ? v.weekdays : [inferWeekdayFromTime(v.time)],
+    time: v.time,
+    stageCount: Math.min(MAX_STAGES, Math.max(1, parseInt(v.stageCount, 10) || 1)),
+    intervalMin: Math.max(1, parseInt(v.intervalMin, 10) || 1),
+    lockCancel: !v.cancelEnabled,
+  };
+}
+
+function toFormValues(a: Alarm): AlarmFormValues {
+  return {
+    name: a.name,
+    time: a.time,
+    weekdays: a.weekdays,
+    stageCount: String(a.stageCount),
+    intervalMin: String(a.intervalMin),
+    cancelEnabled: !a.lockCancel,
+  };
+}
+
+// Shared by the add form at the bottom of the card and the edit form that
+// takes over a row — an alarm is defined by the same six things either way.
+function AlarmForm({
+  values,
+  onChange,
+  onSubmit,
+  submitLabel,
+  onCancel,
+}: {
+  values: AlarmFormValues;
+  onChange: (next: AlarmFormValues) => void;
+  onSubmit: () => void;
+  submitLabel: string;
+  onCancel?: () => void;
+}) {
+  function toggleWeekday(js: number) {
+    onChange({
+      ...values,
+      weekdays: values.weekdays.includes(js) ? values.weekdays.filter((d) => d !== js) : [...values.weekdays, js],
+    });
+  }
+  return (
+    <>
+      <div className="add-row">
+        <input
+          placeholder="نام آلارم (اختیاری)"
+          value={values.name}
+          onChange={(e) => onChange({ ...values, name: e.target.value })}
+        />
+        <input type="time" value={values.time} onChange={(e) => onChange({ ...values, time: e.target.value })} />
+      </div>
+
+      <div className="weekday-row">
+        {WEEKDAY_OPTIONS.map((w) => (
+          <button
+            key={w.js}
+            className={'weekday-btn' + (values.weekdays.includes(w.js) ? ' active' : '') + (w.js === 5 ? ' friday' : '')}
+            onClick={() => toggleWeekday(w.js)}
+          >
+            {w.short}
+          </button>
+        ))}
+      </div>
+
+      <div className="add-row">
+        <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>تعداد مرحله</span>
+        <input
+          type="number"
+          min="1"
+          max={MAX_STAGES}
+          style={{ maxWidth: 80 }}
+          value={values.stageCount}
+          onChange={(e) => onChange({ ...values, stageCount: e.target.value })}
+        />
+      </div>
+      <div className="add-row">
+        <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>فاصله مراحل</span>
+        <input
+          type="number"
+          min="1"
+          style={{ maxWidth: 80 }}
+          value={values.intervalMin}
+          onChange={(e) => onChange({ ...values, intervalMin: e.target.value })}
+        />
+        <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>دقیقه</span>
+      </div>
+      <div className="add-row" style={{ alignItems: 'center' }}>
+        <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>قابلیت لغو</span>
+        <Switch checked={values.cancelEnabled} onChange={(v) => onChange({ ...values, cancelEnabled: v })} />
+        {!values.cancelEnabled && <Lock size={18} style={{ color: 'var(--ink-soft)' }} />}
+      </div>
+
+      <div className="add-row">
+        <button onClick={onSubmit}>{submitLabel}</button>
+        {onCancel && (
+          <button className="link-btn" onClick={onCancel}>
+            انصراف
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function AlarmCard() {
   const [alarms, setAlarms] = useState<Alarm[]>([]);
-  const [name, setName] = useState('');
-  const [time, setTime] = useState('07:00');
-  const [weekdays, setWeekdays] = useState<number[]>([]);
-  const [stageCountInput, setStageCountInput] = useState('1');
-  const [intervalInput, setIntervalInput] = useState('5');
-  // Default matches "امکان لغو داشته باشه" — a deliberate opt-in is needed
-  // to make an alarm hard to dismiss, not the other way around.
-  const [cancelEnabled, setCancelEnabled] = useState(true);
+  const [form, setForm] = useState<AlarmFormValues>(EMPTY_FORM);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<AlarmFormValues>(EMPTY_FORM);
 
   const reload = useCallback(async () => {
     setAlarms(await listAlarms());
@@ -108,32 +241,23 @@ export default function AlarmCard() {
     })();
   }, []);
 
-  function toggleWeekday(js: number) {
-    setWeekdays((prev) => (prev.includes(js) ? prev.filter((d) => d !== js) : [...prev, js]));
-  }
-
-  // If the user never touches the weekday picker, don't block adding the
-  // alarm — infer the single day it should ring on from the chosen time:
-  // today if that time hasn't passed yet, otherwise tomorrow.
-  function inferWeekdayFromTime(t: string): number {
-    const [h, m] = t.split(':').map(Number);
-    const now = new Date();
-    const stillUpcomingToday = h > now.getHours() || (h === now.getHours() && m > now.getMinutes());
-    return stillUpcomingToday ? now.getDay() : (now.getDay() + 1) % 7;
-  }
-
   async function onAdd() {
-    const effectiveWeekdays = weekdays.length > 0 ? weekdays : [inferWeekdayFromTime(time)];
-    const stageCount = Math.min(MAX_STAGES, Math.max(1, parseInt(stageCountInput, 10) || 1));
-    const intervalMin = Math.max(1, parseInt(intervalInput, 10) || 1);
-    const lockCancel = !cancelEnabled;
-    const recId = await addAlarm({ name: name.trim(), weekdays: effectiveWeekdays, time, stageCount, intervalMin, lockCancel });
-    await scheduleAllStages({ recId, name: name.trim(), weekdays: effectiveWeekdays, time, stageCount, intervalMin, lockCancel, enabled: true });
-    setName('');
-    setWeekdays([]);
-    setStageCountInput('1');
-    setIntervalInput('5');
-    setCancelEnabled(true);
+    const fields = toAlarmFields(form);
+    const recId = await addAlarm(fields);
+    await scheduleAllStages({ recId, ...fields, enabled: true });
+    setForm(EMPTY_FORM);
+    await reload();
+  }
+
+  async function onSaveEdit(a: Alarm) {
+    const fields = toAlarmFields(editForm);
+    // Each stage is its own OS alarm, keyed by the weekday and stage index it
+    // was scheduled under — so the old set has to be torn down while those
+    // old values are still known, before the record takes on the new shape.
+    await cancelAllStages(a);
+    await editAlarm(a.recId, fields);
+    if (a.enabled) await scheduleAllStages({ recId: a.recId, ...fields, enabled: true });
+    setEditingId(null);
     await reload();
   }
 
@@ -154,73 +278,50 @@ export default function AlarmCard() {
   return (
     <Collapsible title="آلارم" storageKey="clockalarm">
       {alarms.length === 0 && <div className="empty">هنوز آلارمی ثبت نشده.</div>}
-      {alarms.map((a) => (
-        <div className="log-item" key={a.recId}>
-          <div style={{ flex: 1 }}>
-            <span className="log-text">
-              {a.time} — {a.name || 'آلارم'}
-              <WeekdaysBadge weekdays={a.weekdays} />
-            </span>
-            <div className="pay-sub">{a.stageCount > 1 ? `${a.stageCount} مرحله، هر ${a.intervalMin} دقیقه` : 'تک‌مرحله‌ای'}</div>
+      {alarms.map((a) =>
+        editingId === a.recId ? (
+          <div className="log-item" key={a.recId} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+            <AlarmForm
+              values={editForm}
+              onChange={setEditForm}
+              onSubmit={() => onSaveEdit(a)}
+              submitLabel="ذخیره"
+              onCancel={() => setEditingId(null)}
+            />
           </div>
-          <div className="icon-row" style={{ gap: 8 }}>
-            {a.lockCancel && <Lock size={18} style={{ color: 'var(--ink-soft)' }} />}
-            <Switch checked={a.enabled} onChange={() => onToggleEnabled(a)} title={a.enabled ? 'فعال' : 'غیرفعال'} />
-            <button className="habit-del" onClick={() => onDelete(a)} title="حذف">
-              <X size={18} />
-            </button>
+        ) : (
+          <div className="log-item" key={a.recId}>
+            <div style={{ flex: 1 }}>
+              <span className="log-text">
+                {a.time} — {a.name || 'آلارم'}
+                <WeekdaysBadge weekdays={a.weekdays} />
+              </span>
+              <div className="pay-sub">
+                {a.stageCount > 1 ? `${a.stageCount} مرحله، هر ${a.intervalMin} دقیقه` : 'تک‌مرحله‌ای'}
+              </div>
+            </div>
+            <div className="icon-row" style={{ gap: 8 }}>
+              {a.lockCancel && <Lock size={18} style={{ color: 'var(--ink-soft)' }} />}
+              <button
+                className="habit-del"
+                onClick={() => {
+                  setEditingId(a.recId);
+                  setEditForm(toFormValues(a));
+                }}
+                title="ویرایش"
+              >
+                <Pencil size={16} />
+              </button>
+              <Switch checked={a.enabled} onChange={() => onToggleEnabled(a)} title={a.enabled ? 'فعال' : 'غیرفعال'} />
+              <button className="habit-del" onClick={() => onDelete(a)} title="حذف">
+                <X size={18} />
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ),
+      )}
 
-      <div className="add-row">
-        <input placeholder="نام آلارم (اختیاری)" value={name} onChange={(e) => setName(e.target.value)} />
-        <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-      </div>
-
-      <div className="weekday-row">
-        {WEEKDAY_OPTIONS.map((w) => (
-          <button
-            key={w.js}
-            className={'weekday-btn' + (weekdays.includes(w.js) ? ' active' : '') + (w.js === 5 ? ' friday' : '')}
-            onClick={() => toggleWeekday(w.js)}
-          >
-            {w.short}
-          </button>
-        ))}
-      </div>
-
-      <div className="add-row">
-        <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>تعداد مرحله</span>
-        <input
-          type="number"
-          min="1"
-          max={MAX_STAGES}
-          style={{ maxWidth: 80 }}
-          value={stageCountInput}
-          onChange={(e) => setStageCountInput(e.target.value)}
-        />
-      </div>
-      <div className="add-row">
-        <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>فاصله مراحل</span>
-        <input
-          type="number"
-          min="1"
-          style={{ maxWidth: 80 }}
-          value={intervalInput}
-          onChange={(e) => setIntervalInput(e.target.value)}
-        />
-        <span style={{ fontSize: 13, color: 'var(--ink-soft)' }}>دقیقه</span>
-      </div>
-      <div className="add-row" style={{ alignItems: 'center' }}>
-        <span style={{ minWidth: 80, fontSize: 13, color: 'var(--ink-soft)' }}>قابلیت لغو</span>
-        <Switch checked={cancelEnabled} onChange={setCancelEnabled} />
-        {!cancelEnabled && <Lock size={18} style={{ color: 'var(--ink-soft)' }} />}
-      </div>
-
-      <div className="add-row">
-        <button onClick={onAdd}>افزودن آلارم</button>
-      </div>
+      <AlarmForm values={form} onChange={setForm} onSubmit={onAdd} submitLabel="افزودن آلارم" />
     </Collapsible>
   );
 }

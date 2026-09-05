@@ -7,12 +7,14 @@
 // Two action types cover every notification this app creates:
 //  - "confirm_open_clock": بله/خیر — بله opens the device's clock app. Used
 //    only by the built-in nightly "want an alarm for tomorrow?" reminder.
+//    Which button was tapped is acted on natively in MainActivity, not here:
+//    tapping an action launches the activity, and on a cold start the WebView
+//    isn't running yet to receive a localNotificationActionPerformed event.
 //  - "ok_dismiss": a single acknowledge button. Used by everything the user
 //    creates themselves in the card — see NotificationsCard.
 
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { openClockApp } from './openApp';
 
 export type NotificationKind = 'confirm_open_clock' | 'ok';
 
@@ -41,12 +43,6 @@ export async function initNotifications(): Promise<void> {
         actions: [{ id: 'ok', title: 'باشه' }],
       },
     ],
-  });
-  await LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
-    const kind = action.notification.extra?.kind as NotificationKind | undefined;
-    if (kind === 'confirm_open_clock' && action.actionId === 'yes') {
-      openClockApp();
-    }
   });
 }
 

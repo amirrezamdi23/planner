@@ -39,6 +39,15 @@ export async function addAlarm(input: Omit<AlarmPayload, 'enabled'>): Promise<st
   return rec.id;
 }
 
+// Only the user-editable fields — `enabled` is owned by the switch on the
+// row and must survive an edit untouched.
+export async function editAlarm(recId: string, input: Omit<AlarmPayload, 'enabled'>): Promise<void> {
+  const r = await db.records.get(recId);
+  if (!r) return;
+  const p = r.payload as AlarmPayload;
+  await db.records.put({ ...r, payload: { ...p, ...input }, updatedAt: new Date().toISOString() });
+}
+
 export async function setAlarmEnabled(recId: string, enabled: boolean): Promise<void> {
   const r = await db.records.get(recId);
   if (!r) return;
