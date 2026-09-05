@@ -9,6 +9,7 @@ export type RecordType =
   | 'log_item'
   | 'daily_review'
   | 'payment'
+  | 'payment_archive'
   | 'project_category'
   | 'project'
   | 'project_log'

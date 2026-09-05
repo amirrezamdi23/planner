@@ -93,6 +93,14 @@ button {
 button svg {
   flex: 0 0 auto;
 }
+/* Nothing else distinguished a disabled submit button from an enabled one,
+   so a form blocked on a required field (e.g. Payments' "افزودن" before a
+   type is picked) looked identical to a working one and just did nothing
+   when tapped. */
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 /* For inline (non-button) icon+text pairs — status lines, table headers, etc. */
 .icon-row {
   display: inline-flex;

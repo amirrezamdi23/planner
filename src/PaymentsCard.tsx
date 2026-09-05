@@ -14,12 +14,15 @@ import {
   listPayments,
   addPayment,
   editPayment,
-  togglePaymentPaid,
+  markOncePaymentPaid,
   advanceRecurringPayment,
   deletePayment,
+  listPaymentArchive,
+  deletePaymentArchiveEntry,
   type Payment,
   type PaymentKind,
   type PaymentType,
+  type PaymentArchiveEntry,
 } from './repo';
 import JalaliDateInput from './JalaliDateInput';
 import Collapsible from './Collapsible';
@@ -66,13 +69,19 @@ function IconPillGroup<T extends string>({
 export default function PaymentsCard() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [name, setName] = useState('');
-  const [payType, setPayType] = useState<PaymentType | null>(null);
+  // Defaults to the first type rather than null — an unset, invisible
+  // required field (no CSS distinguished an enabled button from a disabled
+  // one; see the button:disabled rule added for this) meant "افزودن"
+  // silently did nothing until a type was picked, which read as broken.
+  const [payType, setPayType] = useState<PaymentType | null>(PAY_TYPES[0].id);
   const [kind, setKind] = useState<PaymentKind>('recurring');
   const [dueDay, setDueDay] = useState('1');
   const [dueJalali, setDueJalali] = useState<[number, number, number]>(todayJalali());
   const [dueDate, setDueDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [showOthers, setShowOthers] = useState(false);
   const [monthFilter, setMonthFilter] = useState<string | null>(null);
+  const [showArchive, setShowArchive] = useState(false);
+  const [archive, setArchive] = useState<PaymentArchiveEntry[]>([]);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -85,10 +94,16 @@ export default function PaymentsCard() {
   const reload = useCallback(async () => {
     setPayments(await listPayments());
   }, []);
+  const reloadArchive = useCallback(async () => {
+    setArchive(await listPaymentArchive());
+  }, []);
 
   useEffect(() => {
     reload();
   }, [reload]);
+  useEffect(() => {
+    reloadArchive();
+  }, [reloadArchive]);
 
   async function onAdd() {
     if (!name.trim() || !payType) return;
@@ -227,9 +242,10 @@ export default function PaymentsCard() {
         <button
           className={'pay-check' + (checked ? ' checked' : '')}
           onClick={async () => {
-            if (p.kind === 'once') await togglePaymentPaid(p.recId);
+            if (p.kind === 'once') await markOncePaymentPaid(p.recId);
             else await advanceRecurringPayment(p.recId);
             await reload();
+            await reloadArchive();
           }}
           title={p.kind === 'recurring' ? 'این دوره پرداخت شد — برو دوره‌ی بعد' : 'پرداخت شد؟'}
         >
@@ -298,6 +314,48 @@ export default function PaymentsCard() {
             </div>
           )}
           {showOthers && visibleOthers.map(renderRow)}
+        </>
+      )}
+
+      {archive.length > 0 && (
+        <>
+          <button className="link-btn chevron-inline" onClick={() => setShowArchive((v) => !v)}>
+            <span className={'chevron-btn small' + (showArchive ? '' : ' collapsed')}>
+              <ChevronDown size={14} />
+            </span>
+            {showArchive ? 'پنهان کردن آرشیو' : `آرشیو (${archive.length} مورد)`}
+          </button>
+          {showArchive &&
+            archive.map((a) => {
+              const payTypeInfo = PAY_TYPES.find((t) => t.id === a.payType);
+              const cycleText = a.kind === 'recurring' ? monthLabelOf(a.cycleLabel) : a.cycleLabel ? jalaliDateOnlyLabel(a.cycleLabel) : '';
+              return (
+                <div className="pay-row" key={a.recId}>
+                  <span className="icon-row" style={{ color: 'var(--teal)' }}>
+                    <SquareCheckBig size={13} />
+                  </span>
+                  <span className="pay-name">
+                    {payTypeInfo && (
+                      <span className="icon-row" title={payTypeInfo.label} style={{ marginInlineEnd: 4 }}>
+                        <payTypeInfo.Icon size={12} />
+                      </span>
+                    )}
+                    {a.name}
+                    {cycleText && <span className="pay-sub"> — {cycleText}</span>}
+                  </span>
+                  <button
+                    className="habit-del"
+                    onClick={async () => {
+                      await deletePaymentArchiveEntry(a.recId);
+                      await reloadArchive();
+                    }}
+                    title="حذف از آرشیو"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              );
+            })}
         </>
       )}
 
