@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, useCallback, useRef, useImperativeHandle, type Ref } from 'react';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Moon, Sun, FileText, CalendarDays, Pencil, Redo2, X, Check,
-  Minus, MessageSquare, ListPlus,
+  Minus, MessageSquare, ListPlus, Copy,
 } from 'lucide-react';
 import { LOG_TYPES } from './logTypes';
 import { MOOD_OPTIONS } from './moodOptions';
@@ -43,6 +43,27 @@ const TODAY = dayKey(0);
 // The nap/sleep/wake/mood gate is always about last night and this morning —
 // never about whichever day is being browsed in the notes section.
 const GATE_YESTERDAY = shiftDayKey(TODAY, -1);
+
+// navigator.clipboard is the right API but rejects outright when the document
+// isn't focused, and the caller has no way to know that ahead of time — so the
+// old execCommand path (which has no such requirement) is the fallback rather
+// than leaving a copy button that quietly does nothing.
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }
+}
 
 // Exposed so App can nudge a refetch after a sync/backup-import completes —
 // those live on their own Browse-tab pages, mutually exclusive with this
@@ -109,6 +130,10 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
   const [commentEditing, setCommentEditing] = useState(false);
   const [subtaskOpenId, setSubtaskOpenId] = useState<string | null>(null);
   const [subtaskDraft, setSubtaskDraft] = useState('');
+  // Which row has its action strip open. Holding a single id (rather than a
+  // set) is what makes opening one row close the previously open one.
+  const [actionsOpenId, setActionsOpenId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -337,6 +362,13 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
     // adding to — otherwise a newly-added subtask would appear to vanish
     // behind a still-collapsed chevron.
     setExpandedSubtaskIds((prev) => new Set(prev).add(recId));
+  }
+  // The tick replaces the copy icon for a moment — without it a tap on a
+  // clipboard button gives no sign it did anything at all.
+  async function onCopyText(it: LogItem) {
+    if (!(await copyToClipboard(it.text))) return;
+    setCopiedId(it.recId);
+    setTimeout(() => setCopiedId((cur) => (cur === it.recId ? null : cur)), 1200);
   }
   async function onAddSubtask(parentRecId: string) {
     if (!subtaskDraft.trim()) return;
@@ -869,7 +901,11 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                     <t.Icon size={15} />
                   </span>
                 )}
-                <div style={{ flex: 1 }}>
+                <div
+                  className="log-tap"
+                  style={{ flex: 1 }}
+                  onClick={() => setActionsOpenId((cur) => (cur === it.recId ? null : it.recId))}
+                >
                   <span className={'log-text' + (it.done ? ' done' : '') + (it.failed ? ' failed' : '')}>
                     {it.text}
                     {!isSub && catName && (
@@ -897,14 +933,16 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                   </span>
                   {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
                 </div>
-                <div className="log-actions">
+              </div>
+              {actionsOpenId === it.recId && (
+                <div className="log-actions-panel">
                   {it.notes && (
                     <button
                       className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
                       onClick={() => toggleNotesExpanded(it.recId)}
                       title="نمایش/پنهان‌کردن توضیحات"
                     >
-                      <ChevronDown size={14} />
+                      <ChevronDown size={15} />
                     </button>
                   )}
                   {canToggle && !isSub && subs.length > 0 && (
@@ -913,7 +951,7 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                       onClick={() => toggleSubtasksExpanded(it.recId)}
                       title="نمایش/پنهان‌کردن زیرکارها"
                     >
-                      <ChevronDown size={14} />
+                      <ChevronDown size={15} />
                     </button>
                   )}
                   {canToggle && !isSub && (
@@ -922,7 +960,7 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                       onClick={() => onToggleSubtaskBox(it.recId)}
                       title="زیرکار"
                     >
-                      <ListPlus size={13} />
+                      <ListPlus size={15} />
                     </button>
                   )}
                   {canToggle && (
@@ -931,22 +969,36 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                       onClick={() => onToggleCommentBox(it)}
                       title="کامنت"
                     >
-                      <MessageSquare size={13} />
+                      <MessageSquare size={15} />
                     </button>
                   )}
-                  <button className="habit-del" onClick={() => onStartEditLog(it)} title="ویرایش">
-                    <Pencil size={13} />
+                  <button
+                    className={'habit-del' + (copiedId === it.recId ? ' active' : '')}
+                    onClick={() => onCopyText(it)}
+                    title={copiedId === it.recId ? 'کپی شد' : 'کپی متن'}
+                  >
+                    {copiedId === it.recId ? <Check size={15} /> : <Copy size={15} />}
+                  </button>
+                  <button
+                    className="habit-del"
+                    onClick={() => {
+                      setActionsOpenId(null);
+                      onStartEditLog(it);
+                    }}
+                    title="ویرایش"
+                  >
+                    <Pencil size={15} />
                   </button>
                   {!isSub && it.day !== TODAY && !it.done && !it.failed && (
                     <button className="habit-del" onClick={() => onMigrateToToday(it.recId)} title="موکول به امروز">
-                      <Redo2 size={13} />
+                      <Redo2 size={15} />
                     </button>
                   )}
                   <button className="habit-del" onClick={() => onDeleteLog(it.recId)} title="حذف">
-                    <X size={13} />
+                    <X size={15} />
                   </button>
                 </div>
-              </div>
+              )}
               {canToggle && commentOpenId === it.recId && (
                 <div className="log-item comment-row">
                   {commentEditing ? (

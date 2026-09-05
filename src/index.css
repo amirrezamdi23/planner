@@ -595,6 +595,33 @@ header {
   flex: 0 0 auto;
   padding-top: 2px;
 }
+/* Quick-log rows keep their actions out of the row itself — seven icons
+   repeated down the whole list crowded the text into what little width was
+   left. Tapping a row opens this strip under it instead (one row at a time),
+   so the text gets the full card width back. Indented to line up with the
+   text above it, past the mark column. */
+.log-actions-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-inline-start: 30px;
+  margin-bottom: 2px;
+  padding: 8px 10px;
+  background: var(--paper);
+  border-radius: 8px;
+}
+/* Faint-until-hover suits an icon tucked at the end of a row, but these are
+   the whole point of the strip. */
+.log-actions-panel .habit-del {
+  opacity: 0.75;
+}
+.log-actions-panel .habit-del.active {
+  opacity: 1;
+}
+.log-tap {
+  cursor: pointer;
+}
 /* History rows have no edit/delete/migrate buttons — just an optional notes
    chevron — so the reserved mark column and gaps can shrink to content,
    giving the title close to the full card width. */
