@@ -56,6 +56,16 @@
             android:theme="@style/AlarmRingTheme" />
     </application>
 
+    <!-- Android 11+ hides other apps' intent handlers from resolution unless
+         declared here — without this, the implicit ACTION_SHOW_ALARMS intent
+         in OpenAppPlugin.kt can't find the device's clock app even though
+         it's installed, and startActivity throws ActivityNotFoundException. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
