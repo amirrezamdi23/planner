@@ -212,21 +212,19 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
     setLogProjectId(null);
     setLogPhaseId(null);
   }
-  function toggleNotesExpanded(recId: string) {
-    setExpandedNotesIds((prev) => {
+  // A row gets one chevron, which opens whatever that row actually has —
+  // notes, subtasks, or both at once. They're kept in separate sets because
+  // the two are rendered from different places (and adding a subtask expands
+  // that list on its own), but the chevron always drives them together.
+  function setRowExpanded(recId: string, expanded: boolean, hasNotes: boolean, hasSubs: boolean) {
+    const apply = (prev: Set<string>) => {
       const next = new Set(prev);
-      if (next.has(recId)) next.delete(recId);
-      else next.add(recId);
+      if (expanded) next.add(recId);
+      else next.delete(recId);
       return next;
-    });
-  }
-  function toggleSubtasksExpanded(recId: string) {
-    setExpandedSubtaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(recId)) next.delete(recId);
-      else next.add(recId);
-      return next;
-    });
+    };
+    if (hasNotes) setExpandedNotesIds(apply);
+    if (hasSubs) setExpandedSubtaskIds(apply);
   }
   function onSelectEditCategory(catId: string) {
     setEditingLogCategoryId((cur) => (cur === catId ? null : catId));
@@ -351,8 +349,19 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
     setCommentEditing(true);
   }
   async function onSaveComment(recId: string) {
-    await setLogComment(recId, commentDraft.trim());
+    const text = commentDraft.trim();
+    await setLogComment(recId, text);
     setCommentEditing(false);
+    // Emptying the text is one of the ways a comment gets deleted; keeping the
+    // box open on nothing would leave a blank strip under a row that no longer
+    // has a comment at all.
+    if (!text) setCommentOpenId(null);
+    await reload();
+  }
+  async function onDeleteComment(recId: string) {
+    await setLogComment(recId, '');
+    setCommentEditing(false);
+    setCommentOpenId(null);
     await reload();
   }
   function onToggleSubtaskBox(recId: string) {
@@ -712,12 +721,14 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
             const phName = phaseName(it.projectId, it.phaseId);
             const subs = subtasksByParent.get(it.recId) ?? [];
             const isEditing = editingLogId === it.recId;
-            // The two chevrons stay on the row itself rather than moving into
-            // the action strip below it: they only show and hide content that
-            // is already part of the row, so reaching them shouldn't cost a
-            // tap on the row first.
-            const showNotesChevron = !!it.notes;
-            const showSubsChevron = canToggle && !isSub && subs.length > 0;
+            // The chevron stays on the row itself rather than moving into the
+            // action strip below it: it only shows and hides content that is
+            // already part of the row, so reaching it shouldn't cost a tap on
+            // the row first.
+            const hasNotes = !!it.notes;
+            const hasSubs = canToggle && !isSub && subs.length > 0;
+            const rowExpanded =
+              (hasNotes && expandedNotesIds.has(it.recId)) || (hasSubs && expandedSubtaskIds.has(it.recId));
             const dueStatus = dueStatusFor(it);
             const dueDaysLeft = it.dueDate ? daysBetweenDayKeys(viewedDay, it.dueDate) : null;
             const rowClass =
@@ -939,26 +950,21 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                   </span>
                   {it.notes && expandedNotesIds.has(it.recId) && <div className="pay-sub">{it.notes}</div>}
                 </div>
-                {(showNotesChevron || showSubsChevron) && (
+                {(hasNotes || hasSubs) && (
                   <div className="log-actions">
-                    {showNotesChevron && (
-                      <button
-                        className={'chevron-btn small' + (expandedNotesIds.has(it.recId) ? '' : ' collapsed')}
-                        onClick={() => toggleNotesExpanded(it.recId)}
-                        title="نمایش/پنهان‌کردن توضیحات"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
-                    )}
-                    {showSubsChevron && (
-                      <button
-                        className={'chevron-btn small' + (expandedSubtaskIds.has(it.recId) ? '' : ' collapsed')}
-                        onClick={() => toggleSubtasksExpanded(it.recId)}
-                        title="نمایش/پنهان‌کردن زیرکارها"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
-                    )}
+                    <button
+                      className={'chevron-btn small' + (rowExpanded ? '' : ' collapsed')}
+                      onClick={() => setRowExpanded(it.recId, !rowExpanded, hasNotes, hasSubs)}
+                      title={
+                        hasNotes && hasSubs
+                          ? 'نمایش/پنهان‌کردن توضیحات و زیرکارها'
+                          : hasNotes
+                            ? 'نمایش/پنهان‌کردن توضیحات'
+                            : 'نمایش/پنهان‌کردن زیرکارها'
+                      }
+                    >
+                      <ChevronDown size={14} />
+                    </button>
                   </div>
                 )}
               </div>
@@ -1027,6 +1033,9 @@ export default function QuickLogCard({ ref }: { ref?: Ref<QuickLogHandle> }) {
                       <span className="comment-text">{it.comment}</span>
                       <button className="habit-del" onClick={() => onStartEditComment(it)} title="ویرایش">
                         <Pencil size={13} />
+                      </button>
+                      <button className="habit-del" onClick={() => onDeleteComment(it.recId)} title="حذف کامنت">
+                        <X size={13} />
                       </button>
                     </>
                   )}
