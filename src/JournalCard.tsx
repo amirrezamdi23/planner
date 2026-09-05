@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronLeft, ChevronRight, Pencil, X, Sunrise, Sunset, NotebookText } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Pencil, X, Sunrise, Sunset, NotebookText } from 'lucide-react';
 import { dayKey, shiftDayKey, jalaliLabelForDayKey } from './lib/date';
 import Collapsible from './Collapsible';
 import {
@@ -107,6 +107,54 @@ function autoResize(el: HTMLTextAreaElement | null) {
   if (!el) return;
   el.style.height = 'auto';
   el.style.height = `${el.scrollHeight}px`;
+}
+
+// بازتاب صبح/بازتاب شب entries tend to run long, and a page full of them
+// fully expanded buries the day's شبانه‌روز under one entry's paragraph —
+// so these two tags collapse to a single line by default, with a chevron to
+// open the rest. The chevron only appears when the text actually needs it:
+// overflow is measured against the collapsed (1-line) layout once per text
+// change, not re-measured after expanding, so toggling open never makes the
+// button decide it's no longer needed.
+function CollapsibleEntryText({ time, text }: { time: string; text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const textRef = useRef<HTMLSpanElement>(null);
+
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+      <span
+        ref={textRef}
+        className="log-text"
+        style={{
+          whiteSpace: 'pre-wrap',
+          ...(expanded
+            ? undefined
+            : { display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
+        }}
+      >
+        <span
+          className="pill"
+          style={{ background: 'var(--paper)', color: 'var(--ink-soft)', marginInlineEnd: 6, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {time}
+        </span>
+        {text}
+      </span>
+      {overflowing && (
+        <button className="habit-del" onClick={() => setExpanded((x) => !x)} title={expanded ? 'بستن' : 'نمایش کامل'}>
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function JournalCard() {
@@ -227,6 +275,8 @@ export default function JournalCard() {
                     </button>
                   </div>
                 </>
+              ) : e.tag === 'morning' || e.tag === 'evening' ? (
+                <CollapsibleEntryText time={formatTime24(e.createdAt)} text={e.text} />
               ) : (
                 <span className="log-text" style={{ whiteSpace: 'pre-wrap' }}>
                   <span
